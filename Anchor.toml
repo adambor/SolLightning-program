@@ -1,7 +1,7 @@
 [features]
 seeds = false
 [programs.devnet]
-test_anchor = "AxE1wvXnceDMrappeMJWyh72YeEWaxcd984aVDSVBM1E"
+test_anchor = "4xdY2JN9aBisRCrpz11wEWjosAjLoidxoVRvivJUMuNU"
 
 [registry]
 url = "https://anchor.projectserum.com"

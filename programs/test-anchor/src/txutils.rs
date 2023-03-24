@@ -67,7 +67,7 @@ pub mod txutils {
         let flag = data[4];
 
         let mut offset = 4;
-        if version>1 && flag == 0 {
+        if flag == 0 {
             offset = 6;
         }
 

@@ -16,7 +16,7 @@ mod utils;
 #[path = "./txutils.rs"]
 mod txutils;
 
-declare_id!("AxE1wvXnceDMrappeMJWyh72YeEWaxcd984aVDSVBM1E");
+declare_id!("4xdY2JN9aBisRCrpz11wEWjosAjLoidxoVRvivJUMuNU");
 
 pub fn now_ts() -> Result<u64> {
     Ok(clock::Clock::get()?.unix_timestamp.try_into().unwrap())
@@ -157,7 +157,9 @@ pub mod test_anchor {
         hash: [u8; 32],
         kind: u8,
         confirmations: u16,
-        nonce: u64
+        nonce: u64,
+        pay_out: bool,
+        txo_hash: [u8; 32] //Only for on-chain
     ) -> Result<()> {
         require!(
             kind <= 2,
@@ -172,10 +174,12 @@ pub mod test_anchor {
 
         ctx.accounts.escrow_state.confirmations = confirmations;
         ctx.accounts.escrow_state.pay_in = true;
+        ctx.accounts.escrow_state.pay_out = pay_out;
         ctx.accounts.escrow_state.initializer_key = *ctx.accounts.initializer.key;
 
         ctx.accounts.escrow_state.offerer = *ctx.accounts.initializer.key;
         ctx.accounts.escrow_state.claimer = *ctx.accounts.claimer.to_account_info().key;
+        ctx.accounts.escrow_state.claimer_token_account = *ctx.accounts.claimer_token_account.to_account_info().key;
 
         ctx.accounts.escrow_state.initializer_deposit_token_account = *ctx
             .accounts
@@ -195,6 +199,7 @@ pub mod test_anchor {
 
         emit!(InitializeEvent {
             hash: ctx.accounts.escrow_state.hash,
+            txo_hash: txo_hash,
             nonce: ctx.accounts.escrow_state.nonce,
             kind: kind
         });
@@ -213,7 +218,9 @@ pub mod test_anchor {
         confirmations: u16,
         escrow_nonce: u64,
         auth_expiry: u64,
-        signature: [u8; 64]
+        signature: [u8; 64],
+        pay_out: bool,
+        txo_hash: [u8; 32] //Only for on-chain
     ) -> Result<()> {
         require!(
             kind <= 2,
@@ -261,10 +268,12 @@ pub mod test_anchor {
 
         ctx.accounts.escrow_state.confirmations = confirmations;
         ctx.accounts.escrow_state.pay_in = false;
+        ctx.accounts.escrow_state.pay_out = pay_out;
         ctx.accounts.escrow_state.initializer_key = *ctx.accounts.initializer.key;
 
         ctx.accounts.escrow_state.offerer = *ctx.accounts.offerer.to_account_info().key;
         ctx.accounts.escrow_state.claimer = *ctx.accounts.claimer.to_account_info().key;
+        ctx.accounts.escrow_state.claimer_token_account = *ctx.accounts.claimer_token_account.to_account_info().key;
 
         ctx.accounts.escrow_state.initializer_amount = initializer_amount;
         ctx.accounts.escrow_state.mint = *ctx.accounts.mint.to_account_info().key;
@@ -277,6 +286,7 @@ pub mod test_anchor {
 
         emit!(InitializeEvent {
             hash: ctx.accounts.escrow_state.hash,
+            txo_hash: txo_hash,
             nonce: ctx.accounts.escrow_state.nonce,
             kind: kind
         });
@@ -468,7 +478,7 @@ pub mod test_anchor {
 
     //Claim the swap
     pub fn claimer_claim_pay_out_with_ext_data(ctx: Context<ClaimPayOutWithExtData>, reversed_tx_id: [u8; 32]) -> Result<()> {
-        let (data_account_key, _block_header_bump) = Pubkey::find_program_address(&[b"data", &reversed_tx_id, ctx.accounts.claimer.to_account_info().key.as_ref()], &ctx.program_id);
+        let (data_account_key, _data_account_bump) = Pubkey::find_program_address(&[b"data", &reversed_tx_id, ctx.accounts.signer.to_account_info().key.as_ref()], &ctx.program_id);
 
         require!(
             data_account_key == *ctx.accounts.data.to_account_info().key,
@@ -498,7 +508,7 @@ pub mod test_anchor {
 
     //Claim the swap
     pub fn claimer_claim_with_ext_data(ctx: Context<ClaimWithExtData>, reversed_tx_id: [u8; 32]) -> Result<()> {
-        let (data_account_key, _block_header_bump) = Pubkey::find_program_address(&[b"data", &reversed_tx_id, ctx.accounts.claimer.to_account_info().key.as_ref()], &ctx.program_id);
+        let (data_account_key, _block_header_bump) = Pubkey::find_program_address(&[b"data", &reversed_tx_id, ctx.accounts.signer.to_account_info().key.as_ref()], &ctx.program_id);
 
         require!(
             data_account_key == *ctx.accounts.data.to_account_info().key,
@@ -626,7 +636,7 @@ pub struct Withdraw<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, escrow_nonce: u64)]
+#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, escrow_nonce: u64, pay_out: bool)]
 pub struct InitializePayIn<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
@@ -640,6 +650,8 @@ pub struct InitializePayIn<'info> {
 
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub claimer: AccountInfo<'info>,
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub claimer_token_account: AccountInfo<'info>,
 
     //Data storage account
     #[account(
@@ -679,7 +691,7 @@ pub struct InitializePayIn<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(nonce: u64, initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, signature: [u8; 64], escrow_nonce: u64)]
+#[instruction(nonce: u64, initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, signature: [u8; 64], escrow_nonce: u64, pay_out: bool)]
 pub struct Initialize<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
@@ -698,6 +710,8 @@ pub struct Initialize<'info> {
     pub offerer: AccountInfo<'info>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub claimer: AccountInfo<'info>,
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub claimer_token_account: AccountInfo<'info>,
     
     //Data storage account
     #[account(
@@ -873,24 +887,21 @@ pub struct RefundWithSignature<'info> {
 #[derive(Accounts)]
 pub struct ClaimPayOut<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
-    pub claimer: Signer<'info>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub offerer: AccountInfo<'info>,
 
     #[account(mut)]
     pub claimer_receive_token_account: Box<Account<'info, TokenAccount>>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub offerer: AccountInfo<'info>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub initializer: AccountInfo<'info>,
 
     #[account(
         mut,
-        constraint = escrow_state.claimer == *claimer.key,
         constraint = escrow_state.offerer == *offerer.key,
-        constraint = escrow_state.initializer_key == *initializer.key,
-        close = initializer
+        constraint = escrow_state.claimer_token_account == claimer_receive_token_account.key(),
+        constraint = escrow_state.pay_out,
+        close = signer
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
     
@@ -918,32 +929,30 @@ pub struct ClaimPayOut<'info> {
 pub struct Claim<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
-    pub claimer: Signer<'info>,
+    pub signer: Signer<'info>,
 
     /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
     pub offerer: AccountInfo<'info>,
 
     /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub initializer: AccountInfo<'info>,
+    pub claimer: AccountInfo<'info>,
 
     //Account of the token for initializer
     #[account(
         init_if_needed,
         seeds = [b"uservault".as_ref(), claimer.key.as_ref(), escrow_state.mint.as_ref()],
         bump,
-        payer = claimer,
+        payer = signer,
         space = UserAccount::space()
     )]
     pub user_data: Account<'info, UserAccount>,
 
     #[account(
         mut,
-        constraint = escrow_state.claimer == *claimer.key,
         constraint = escrow_state.offerer == *offerer.key,
-        constraint = escrow_state.initializer_key == *initializer.key,
-        close = initializer
+        constraint = escrow_state.claimer == *claimer.key,
+        constraint = !escrow_state.pay_out,
+        close = signer
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
     
@@ -957,24 +966,21 @@ pub struct Claim<'info> {
 #[derive(Accounts)]
 pub struct ClaimPayOutWithExtData<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
-    pub claimer: Signer<'info>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub offerer: AccountInfo<'info>,
 
     #[account(mut)]
     pub claimer_receive_token_account: Box<Account<'info, TokenAccount>>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub offerer: AccountInfo<'info>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub initializer: AccountInfo<'info>,
 
     #[account(
         mut,
-        constraint = escrow_state.claimer == *claimer.key,
         constraint = escrow_state.offerer == *offerer.key,
-        constraint = escrow_state.initializer_key == *initializer.key,
-        close = initializer
+        constraint = escrow_state.claimer_token_account == claimer_receive_token_account.key(),
+        constraint = escrow_state.pay_out,
+        close = signer
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
     
@@ -987,7 +993,7 @@ pub struct ClaimPayOutWithExtData<'info> {
     
     #[account(
         mut,
-        close = claimer
+        close = signer
     )]
     pub data: Box<Account<'info, Data>>,
 
@@ -1008,32 +1014,30 @@ pub struct ClaimPayOutWithExtData<'info> {
 pub struct ClaimWithExtData<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
-    pub claimer: Signer<'info>,
+    pub signer: Signer<'info>,
 
     /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
     pub offerer: AccountInfo<'info>,
-
+    
     /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub initializer: AccountInfo<'info>,
+    pub claimer: AccountInfo<'info>,
 
     //Account of the token for initializer
     #[account(
         init_if_needed,
         seeds = [b"uservault".as_ref(), claimer.key.as_ref(), escrow_state.mint.as_ref()],
         bump,
-        payer = claimer,
+        payer = signer,
         space = UserAccount::space()
     )]
     pub user_data: Account<'info, UserAccount>,
 
     #[account(
         mut,
-        constraint = escrow_state.claimer == *claimer.key,
         constraint = escrow_state.offerer == *offerer.key,
-        constraint = escrow_state.initializer_key == *initializer.key,
-        close = initializer
+        constraint = escrow_state.claimer == *claimer.key,
+        constraint = !escrow_state.pay_out,
+        close = signer
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
     
@@ -1096,11 +1100,15 @@ pub struct EscrowState {
 
     pub initializer_key: Pubkey,
     pub pay_in: bool,
+
+    pub pay_out: bool,
     
     pub offerer: Pubkey,
-    pub claimer: Pubkey,
-    
     pub initializer_deposit_token_account: Pubkey,
+
+    pub claimer: Pubkey,
+    pub claimer_token_account: Pubkey,
+    
     pub initializer_amount: u64,
     pub mint: Pubkey,
     pub expiry: u64
@@ -1119,7 +1127,7 @@ pub struct Data {
 
 impl EscrowState {
     pub fn space() -> usize {
-        8 + 1 + 2 + 8 + 192 + 8 + 8 + 1
+        8 + 1 + 2 + 8 + 192 + 8 + 8 + 1 + 32 + 1
     }
 }
 
@@ -1221,6 +1229,7 @@ impl<'info> ClaimPayOutWithExtData<'info> {
 #[event]
 pub struct InitializeEvent {
     pub hash: [u8; 32],
+    pub txo_hash: [u8; 32],
     pub nonce: u64,
     pub kind: u8
 }

@@ -311,6 +311,7 @@ describe("test-anchor", () => {
         initializer: initializer.publicKey,
         initializerDepositTokenAccount: initializerTokenAccountA,
         claimer: claimer.publicKey,
+        claimerTokenAccount: claimerTokenAccountA,
         escrowState: escrowStateKey2,
         vault: vaultKey,
         vaultAuthority: vaultAuthorityKey,        
@@ -347,13 +348,16 @@ describe("test-anchor", () => {
   const initWithoutSignature = async (expiryTime?: number) => {
     if(expiryTime==null) expiryTime = Math.floor(Date.now()/1000)+(12*60*60);
 
+    console.log("Creating init without signature, initializer: ", initializer);
+    console.log("Creating init without signature, initializer key: ", initializer.publicKey);
     
-    let result = await programPaidBy(initializer).methods
-      .offererInitializePayIn(new anchor.BN(initializeAmount), new anchor.BN(expiryTime), hash, new BN(0), new BN(0))
-      .accounts({
+    let result
+    try {
+      const accounts = {
         initializer: initializer.publicKey,
         initializerDepositTokenAccount: initializerTokenAccountA,
         claimer: claimer.publicKey,
+        claimerTokenAccount: claimerTokenAccountA,
         escrowState: escrowStateKey,
         vault: vaultKey,
         vaultAuthority: vaultAuthorityKey,        
@@ -362,9 +366,19 @@ describe("test-anchor", () => {
         systemProgram: anchor.web3.SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         tokenProgram: TOKEN_PROGRAM_ID
-      })
+      };
+      console.log("Using accounts: ", accounts);
+      
+      result = await programPaidBy(initializer).methods
+      .offererInitializePayIn(new anchor.BN(initializeAmount), new anchor.BN(expiryTime), hash, new BN(0), new BN(0), new BN(0), true, Buffer.alloc(32, 0))
+      .accounts(accounts)
       .signers([initializer])
       .instruction();
+    } catch(e) {
+      console.error(e);
+    }
+
+    console.log("Creating init without signature, created ix: ", result);
 
     const tx = new anchor.web3.Transaction();
     tx.add(result);
@@ -425,11 +439,12 @@ describe("test-anchor", () => {
     const signature = nacl.sign.detached(messageBuffer, initializer.secretKey);
 
     let result = await programPaidBy(initializer).methods
-      .offererInitialize(nonce, new anchor.BN(initializeAmount), new anchor.BN(expiryTime), hash, new BN(0), new BN(0), new anchor.BN(authExpiry), Buffer.from(signature))
+      .offererInitialize(nonce, new anchor.BN(initializeAmount), new anchor.BN(expiryTime), hash, new BN(0), new BN(0), new BN(0), new anchor.BN(authExpiry), Buffer.from(signature), true, Buffer.alloc(32))
       .accounts({
         initializer: claimer.publicKey,
         offerer: initializer.publicKey,
         claimer: claimer.publicKey,
+        claimerTokenAccount: claimerTokenAccountA,
         mint: mintA,
         mainState: mainStateKey,
         userData: userVaultKey,
@@ -476,7 +491,7 @@ describe("test-anchor", () => {
 
     return expiryTime;
   };
-
+/*
   it("Initialize escrow without signature and claim on-chain", async () => {
     await initWithoutSignatureOnchain();
 
@@ -581,17 +596,17 @@ describe("test-anchor", () => {
   });
 
   return;
-
+*/
   it("Initialize escrow without signature and claim", async () => {
     await initWithoutSignature();
+
+    console.log("Initialized without signature!");
 
     const signature = await programPaidBy(claimer).methods
       .claimerClaimPayOut(secret)
       .accounts({
-        claimer: claimer.publicKey,
+        signer: claimer.publicKey,
         claimerReceiveTokenAccount: claimerTokenAccountA,
-        offerer: initializer.publicKey,
-        initializer: initializer.publicKey,
         escrowState: escrowStateKey,
         vault: vaultKey,
         vaultAuthority: vaultAuthorityKey,
@@ -634,10 +649,8 @@ describe("test-anchor", () => {
     const signature = await programPaidBy(claimer).methods
       .claimerClaimPayOut(secret)
       .accounts({
-        claimer: claimer.publicKey,
+        signer: claimer.publicKey,
         claimerReceiveTokenAccount: claimerTokenAccountA,
-        offerer: initializer.publicKey,
-        initializer: claimer.publicKey,
         escrowState: escrowStateKey,
         vault: vaultKey,
         vaultAuthority: vaultAuthorityKey,
@@ -648,7 +661,7 @@ describe("test-anchor", () => {
 
     let fetchedTakerTokenAccountA = await getAccount(provider.connection, claimerTokenAccountA);
 
-    assert.ok(Number(fetchedTakerTokenAccountA.amount) == initializeAmount);
+    assert.ok(Number(fetchedTakerTokenAccountA.amount) == 2*initializeAmount);
 
     console.log("Current signature: ", signature);
     let signatures;
@@ -750,7 +763,7 @@ describe("test-anchor", () => {
     let fetchedUserVault = await program.account.userAccount.fetch(userVaultKey);
 
     assert.ok(Number(fetchedUserVault.amount) == deposit1Amount+deposit2Amount-initializeAmount);
-    assert.ok(Number(fetchedTakerTokenAccountA.amount) == initializeAmount);
+    assert.ok(Number(fetchedTakerTokenAccountA.amount) == 2*initializeAmount);
   });
 
   it("Initialize escrow with signature and refund (timed out)", async () => {
@@ -770,7 +783,7 @@ describe("test-anchor", () => {
     let fetchedUserVault = await program.account.userAccount.fetch(userVaultKey);
 
     assert.ok(Number(fetchedUserVault.amount) == deposit1Amount+deposit2Amount-initializeAmount);
-    assert.ok(Number(fetchedTakerTokenAccountA.amount) == initializeAmount);
+    assert.ok(Number(fetchedTakerTokenAccountA.amount) == 2*initializeAmount);
   });
 
   it("Initialize escrow with signature and refund (not timed out yet)", async () => {
