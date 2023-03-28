@@ -9,8 +9,6 @@ use anchor_spl::token::{
     self, /*CloseAccount, */ Mint, Token,
     TokenAccount, Transfer
 };
-use std::ops::DerefMut;
-use std::ops::Deref;
 use crate::utils::utils::verify_ed25519_ix;
 
 #[path = "./utils.rs"]
@@ -603,9 +601,6 @@ pub mod test_anchor {
                 .with_signer(&[&authority_seeds[..]]),
             ctx.accounts.escrow_state.initializer_amount,
         )?;
-        
-        ctx.accounts.user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
-        ctx.accounts.user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
 
         emit!(ClaimEvent {
             hash: ctx.accounts.escrow_state.hash,
@@ -653,9 +648,6 @@ pub mod test_anchor {
             ctx.accounts.escrow_state.initializer_amount,
         )?;
 
-        ctx.accounts.user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
-        ctx.accounts.user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
-
         emit!(ClaimEvent {
             hash: ctx.accounts.escrow_state.hash,
             secret: [0; 32].to_vec()
@@ -687,7 +679,7 @@ pub mod test_anchor {
         Ok(())
     }
 
-    pub fn write_data(ctx: Context<WriteData>, _reversed_tx_id: [u8; 32], size: u32, data: Vec<u8>) -> Result<()> {
+    pub fn write_data(ctx: Context<WriteData>, _reversed_tx_id: [u8; 32], _size: u32, data: Vec<u8>) -> Result<()> {
         ctx.accounts.data.data.extend_from_slice(&data);
 
         Ok(())
@@ -1067,16 +1059,6 @@ pub struct ClaimPayOut<'info> {
     #[account(mut)]
     pub claimer_receive_token_account: Box<Account<'info, TokenAccount>>,
 
-    //Account of the token for initializer
-    #[account(
-        init_if_needed,
-        seeds = [USER_DATA_SEED.as_ref(), escrow_state.claimer.as_ref(), escrow_state.mint.as_ref()],
-        bump,
-        payer = signer,
-        space = UserAccount::space()
-    )]
-    pub user_data: Account<'info, UserAccount>,
-
     #[account(
         mut,
         constraint = escrow_state.offerer == *offerer.key,
@@ -1101,8 +1083,6 @@ pub struct ClaimPayOut<'info> {
     pub vault_authority: AccountInfo<'info>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: Program<'info, Token>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub system_program: Program<'info, System>,
     /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
     #[account(address = IX_ID)]
     pub ix_sysvar: AccountInfo<'info>
@@ -1158,16 +1138,6 @@ pub struct ClaimPayOutWithExtData<'info> {
     #[account(mut)]
     pub claimer_receive_token_account: Box<Account<'info, TokenAccount>>,
 
-    //Account of the token for initializer
-    #[account(
-        init_if_needed,
-        seeds = [USER_DATA_SEED.as_ref(), escrow_state.claimer.as_ref(), escrow_state.mint.as_ref()],
-        bump,
-        payer = signer,
-        space = UserAccount::space()
-    )]
-    pub user_data: Account<'info, UserAccount>,
-
     #[account(
         mut,
         constraint = escrow_state.offerer == *offerer.key,
@@ -1198,8 +1168,6 @@ pub struct ClaimPayOutWithExtData<'info> {
     pub vault_authority: AccountInfo<'info>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: Program<'info, Token>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub system_program: Program<'info, System>,
     /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
     #[account(address = IX_ID)]
     pub ix_sysvar: AccountInfo<'info>
