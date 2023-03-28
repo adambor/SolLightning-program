@@ -152,12 +152,15 @@ pub mod test_anchor {
     //Initialize from wallet balance
     pub fn offerer_initialize_pay_in(
         ctx: Context<InitializePayIn>,
+        nonce: u64,
         initializer_amount: u64,
         expiry: u64,
         hash: [u8; 32],
         kind: u8,
         confirmations: u16,
-        nonce: u64,
+        auth_expiry: u64,
+        signature: [u8; 64],
+        escrow_nonce: u64,
         pay_out: bool,
         txo_hash: [u8; 32] //Only for on-chain
     ) -> Result<()> {
@@ -166,10 +169,53 @@ pub mod test_anchor {
             SwapErrorCode::KindUnknown
         );
 
+        require!(
+            auth_expiry > now_ts()?,
+            SwapErrorCode::AlreadyExpired
+        );
+
+        require!(
+            nonce > ctx.accounts.user_data.claim_nonce,
+            SwapErrorCode::AlreadyExpired
+        );
+        
+        let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar)?;
+
+        let mut msg;
+        if pay_out {
+            msg = Vec::with_capacity(16+8+32+8+8+32+1+2+8+1+32);
+        } else {
+            msg = Vec::with_capacity(16+8+32+8+8+32+1+2+8+1);
+        }
+
+        msg.extend_from_slice(b"claim_initialize");
+        msg.extend_from_slice(&nonce.to_le_bytes()); //Nonce
+        msg.extend_from_slice(&ctx.accounts.mint.to_account_info().key.to_bytes()); //Token
+        msg.extend_from_slice(&initializer_amount.to_le_bytes()); //Amount
+        msg.extend_from_slice(&expiry.to_le_bytes()); //Expiry
+        msg.extend_from_slice(&hash); //Hash
+        msg.extend_from_slice(&kind.to_le_bytes()); //Kind
+        msg.extend_from_slice(&confirmations.to_le_bytes()); //Confirmations
+        msg.extend_from_slice(&auth_expiry.to_le_bytes()); //Expiry
+        if pay_out {
+            msg.push(1); //Payout
+            msg.extend_from_slice(&ctx.accounts.claimer_token_account.to_account_info().key.to_bytes());
+        } else {
+            msg.push(0); //Payout
+        }
+
+        // Check that ix is what we expect to have been sent
+        let result = verify_ed25519_ix(&ix, &ctx.accounts.claimer.to_account_info().key.to_bytes(), &msg, &signature);
+
+        require!(
+            result == 0,
+            SwapErrorCode::SignatureVerificationFailed
+        );
+
         ctx.accounts.escrow_state.kind = kind;
 
         if kind==KIND_CHAIN_NONCED {
-            ctx.accounts.escrow_state.nonce = nonce;
+            ctx.accounts.escrow_state.nonce = escrow_nonce;
         }
 
         ctx.accounts.escrow_state.confirmations = confirmations;
@@ -636,7 +682,7 @@ pub struct Withdraw<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, escrow_nonce: u64, pay_out: bool)]
+#[instruction(nonce: u64, initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, signature: [u8; 64], escrow_nonce: u64, pay_out: bool, txo_hash: [u8; 32])]
 pub struct InitializePayIn<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
@@ -652,6 +698,14 @@ pub struct InitializePayIn<'info> {
     pub claimer: AccountInfo<'info>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub claimer_token_account: AccountInfo<'info>,
+
+    //Account of the token for claimer
+    #[account(
+        mut,
+        seeds = [b"uservault".as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
+        bump
+    )]
+    pub user_data: Account<'info, UserAccount>,
 
     //Data storage account
     #[account(
@@ -687,11 +741,14 @@ pub struct InitializePayIn<'info> {
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
     /// CHECK: This is not dangerous because we don't read or write from this account
-    pub token_program: Program<'info, Token>
+    pub token_program: Program<'info, Token>,
+    /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
+    #[account(address = IX_ID)]
+    pub ix_sysvar: AccountInfo<'info>
 }
 
 #[derive(Accounts)]
-#[instruction(nonce: u64, initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, signature: [u8; 64], escrow_nonce: u64, pay_out: bool)]
+#[instruction(nonce: u64, initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, signature: [u8; 64], escrow_nonce: u64, pay_out: bool, txo_hash: [u8; 32])]
 pub struct Initialize<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
@@ -1117,7 +1174,8 @@ pub struct EscrowState {
 #[account]
 pub struct UserAccount {
     pub nonce: u64,
-    pub amount: u64
+    pub amount: u64,
+    pub claim_nonce: u64,
 }
 
 #[account]
@@ -1133,7 +1191,7 @@ impl EscrowState {
 
 impl UserAccount {
     pub fn space() -> usize {
-        8 + 8 + 8
+        8 + 8 + 8 + 8
     }
 }
 
