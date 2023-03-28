@@ -9,6 +9,8 @@ use anchor_spl::token::{
     self, /*CloseAccount, */ Mint, Token,
     TokenAccount, Transfer
 };
+use std::ops::DerefMut;
+use std::ops::Deref;
 use crate::utils::utils::verify_ed25519_ix;
 
 #[path = "./utils.rs"]
@@ -105,11 +107,13 @@ pub mod verification_utils {
     }
 }
 
+
+static AUTHORITY_SEED: &[u8] = b"authority";
+static USER_DATA_SEED: &[u8] = b"uservault";
+
 #[program]
 pub mod test_anchor {
     use super::*;
-
-    const AUTHORITY_SEED: &[u8] = b"authority";
 
     //Deposit to program balance
     pub fn deposit(
@@ -347,6 +351,31 @@ pub mod test_anchor {
             SwapErrorCode::NotExpiredYet
         );
 
+        if !ctx.accounts.escrow_state.pay_out {
+            //Check the remainingAccounts
+            let user_data_acc = &ctx.remaining_accounts[0];
+            let (user_data_address, _user_data_bump) =
+                Pubkey::find_program_address(&[USER_DATA_SEED, ctx.accounts.escrow_state.claimer.as_ref(), ctx.accounts.escrow_state.mint.as_ref()], ctx.program_id);
+            
+            require!(
+                user_data_address==*user_data_acc.key,
+                SwapErrorCode::InvalidUserData
+            );
+
+            require!(
+                user_data_acc.is_writable,
+                SwapErrorCode::InvalidUserData
+            );
+
+            let mut data = user_data_acc.try_borrow_mut_data()?;
+            let mut user_data = UserAccount::try_deserialize(&mut &**data)?;
+
+            user_data.fail_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+            user_data.fail_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
+
+            user_data.try_serialize(&mut *data)?;
+        }
+
         let (_vault_authority, vault_authority_bump) =
             Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
         let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
@@ -371,6 +400,31 @@ pub mod test_anchor {
             ctx.accounts.escrow_state.expiry < now_ts()?,
             SwapErrorCode::NotExpiredYet
         );
+
+        if !ctx.accounts.escrow_state.pay_out {
+            //Check the remainingAccounts
+            let user_data_acc = &ctx.remaining_accounts[0];
+            let (user_data_address, _user_data_bump) =
+                Pubkey::find_program_address(&[USER_DATA_SEED, ctx.accounts.escrow_state.claimer.as_ref(), ctx.accounts.escrow_state.mint.as_ref()], ctx.program_id);
+            
+            require!(
+                user_data_address==*user_data_acc.key,
+                SwapErrorCode::InvalidUserData
+            );
+
+            require!(
+                user_data_acc.is_writable,
+                SwapErrorCode::InvalidUserData
+            );
+
+            let mut data = user_data_acc.try_borrow_mut_data()?;
+            let mut user_data = UserAccount::try_deserialize(&mut &**data)?;
+
+            user_data.fail_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+            user_data.fail_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
+
+            user_data.try_serialize(&mut *data)?;
+        }
 
         ctx.accounts.user_data.amount += ctx.accounts.escrow_state.initializer_amount;
 
@@ -405,6 +459,31 @@ pub mod test_anchor {
             result == 0,
             SwapErrorCode::SignatureVerificationFailed
         );
+
+        if !ctx.accounts.escrow_state.pay_out {
+            //Check the remainingAccounts
+            let user_data_acc = &ctx.remaining_accounts[0];
+            let (user_data_address, _user_data_bump) =
+                Pubkey::find_program_address(&[USER_DATA_SEED, ctx.accounts.escrow_state.claimer.as_ref(), ctx.accounts.escrow_state.mint.as_ref()], ctx.program_id);
+            
+            require!(
+                user_data_address==*user_data_acc.key,
+                SwapErrorCode::InvalidUserData
+            );
+
+            require!(
+                user_data_acc.is_writable,
+                SwapErrorCode::InvalidUserData
+            );
+
+            let mut data = user_data_acc.try_borrow_mut_data()?;
+            let mut user_data = UserAccount::try_deserialize(&mut &**data)?;
+
+            user_data.coop_close_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+            user_data.coop_close_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
+
+            user_data.try_serialize(&mut *data)?;
+        }
 
         let (_vault_authority, vault_authority_bump) =
             Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
@@ -448,6 +527,31 @@ pub mod test_anchor {
             result == 0,
             SwapErrorCode::SignatureVerificationFailed
         );
+
+        if !ctx.accounts.escrow_state.pay_out {
+            //Check the remainingAccounts
+            let user_data_acc = &ctx.remaining_accounts[0];
+            let (user_data_address, _user_data_bump) =
+                Pubkey::find_program_address(&[USER_DATA_SEED, ctx.accounts.escrow_state.claimer.as_ref(), ctx.accounts.escrow_state.mint.as_ref()], ctx.program_id);
+            
+            require!(
+                user_data_address==*user_data_acc.key,
+                SwapErrorCode::InvalidUserData
+            );
+
+            require!(
+                user_data_acc.is_writable,
+                SwapErrorCode::InvalidUserData
+            );
+
+            let mut data = user_data_acc.try_borrow_mut_data()?;
+            let mut user_data = UserAccount::try_deserialize(&mut &**data)?;
+
+            user_data.coop_close_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+            user_data.coop_close_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
+
+            user_data.try_serialize(&mut *data)?;
+        }
         
         ctx.accounts.user_data.amount += ctx.accounts.escrow_state.initializer_amount;
 
@@ -499,6 +603,9 @@ pub mod test_anchor {
                 .with_signer(&[&authority_seeds[..]]),
             ctx.accounts.escrow_state.initializer_amount,
         )?;
+        
+        ctx.accounts.user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+        ctx.accounts.user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
 
         emit!(ClaimEvent {
             hash: ctx.accounts.escrow_state.hash,
@@ -513,6 +620,8 @@ pub mod test_anchor {
         verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &secret)?;
 
         ctx.accounts.user_data.amount += ctx.accounts.escrow_state.initializer_amount;
+        ctx.accounts.user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+        ctx.accounts.user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
 
         emit!(ClaimEvent {
             hash: ctx.accounts.escrow_state.hash,
@@ -544,6 +653,9 @@ pub mod test_anchor {
             ctx.accounts.escrow_state.initializer_amount,
         )?;
 
+        ctx.accounts.user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+        ctx.accounts.user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
+
         emit!(ClaimEvent {
             hash: ctx.accounts.escrow_state.hash,
             secret: [0; 32].to_vec()
@@ -564,6 +676,8 @@ pub mod test_anchor {
         verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &ctx.accounts.data.data)?;
 
         ctx.accounts.user_data.amount += ctx.accounts.escrow_state.initializer_amount;
+        ctx.accounts.user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+        ctx.accounts.user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
 
         emit!(ClaimEvent {
             hash: ctx.accounts.escrow_state.hash,
@@ -601,7 +715,7 @@ pub struct Deposit<'info> {
     //Account holding the tokens
     #[account(
         init_if_needed,
-        seeds = [b"uservault".as_ref(), initializer.to_account_info().key.as_ref(), mint.to_account_info().key.as_ref()],
+        seeds = [USER_DATA_SEED.as_ref(), initializer.to_account_info().key.as_ref(), mint.to_account_info().key.as_ref()],
         bump,
         payer = initializer,
         space = UserAccount::space()
@@ -649,7 +763,7 @@ pub struct Withdraw<'info> {
     //Account holding the tokens
     #[account(
         mut,
-        seeds = [b"uservault".as_ref(), initializer.to_account_info().key.as_ref(), mint.to_account_info().key.as_ref()],
+        seeds = [USER_DATA_SEED.as_ref(), initializer.to_account_info().key.as_ref(), mint.to_account_info().key.as_ref()],
         bump,
         constraint = user_data.amount >= amount
     )]
@@ -702,7 +816,7 @@ pub struct InitializePayIn<'info> {
     //Account of the token for claimer
     #[account(
         mut,
-        seeds = [b"uservault".as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
+        seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
         bump
     )]
     pub user_data: Account<'info, UserAccount>,
@@ -757,7 +871,7 @@ pub struct Initialize<'info> {
     //Account of the token for initializer
     #[account(
         mut,
-        seeds = [b"uservault".as_ref(), offerer.key.as_ref(), mint.to_account_info().key.as_ref()],
+        seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), mint.to_account_info().key.as_ref()],
         bump,
         constraint = user_data.amount >= initializer_amount
     )]
@@ -844,7 +958,7 @@ pub struct Refund<'info> {
     //Account of the token for initializer
     #[account(
         mut,
-        seeds = [b"uservault".as_ref(), offerer.key.as_ref(), escrow_state.mint.as_ref()],
+        seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), escrow_state.mint.as_ref()],
         bump,
     )]
     pub user_data: Account<'info, UserAccount>,
@@ -921,7 +1035,7 @@ pub struct RefundWithSignature<'info> {
     //Account of the token for initializer
     #[account(
         mut,
-        seeds = [b"uservault".as_ref(), offerer.key.as_ref(), escrow_state.mint.as_ref()],
+        seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), escrow_state.mint.as_ref()],
         bump,
     )]
     pub user_data: Account<'info, UserAccount>,
@@ -953,6 +1067,16 @@ pub struct ClaimPayOut<'info> {
     #[account(mut)]
     pub claimer_receive_token_account: Box<Account<'info, TokenAccount>>,
 
+    //Account of the token for initializer
+    #[account(
+        init_if_needed,
+        seeds = [USER_DATA_SEED.as_ref(), escrow_state.claimer.as_ref(), escrow_state.mint.as_ref()],
+        bump,
+        payer = signer,
+        space = UserAccount::space()
+    )]
+    pub user_data: Account<'info, UserAccount>,
+
     #[account(
         mut,
         constraint = escrow_state.offerer == *offerer.key,
@@ -977,6 +1101,8 @@ pub struct ClaimPayOut<'info> {
     pub vault_authority: AccountInfo<'info>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: Program<'info, Token>,
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub system_program: Program<'info, System>,
     /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
     #[account(address = IX_ID)]
     pub ix_sysvar: AccountInfo<'info>
@@ -997,7 +1123,7 @@ pub struct Claim<'info> {
     //Account of the token for initializer
     #[account(
         init_if_needed,
-        seeds = [b"uservault".as_ref(), claimer.key.as_ref(), escrow_state.mint.as_ref()],
+        seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), escrow_state.mint.as_ref()],
         bump,
         payer = signer,
         space = UserAccount::space()
@@ -1032,6 +1158,16 @@ pub struct ClaimPayOutWithExtData<'info> {
     #[account(mut)]
     pub claimer_receive_token_account: Box<Account<'info, TokenAccount>>,
 
+    //Account of the token for initializer
+    #[account(
+        init_if_needed,
+        seeds = [USER_DATA_SEED.as_ref(), escrow_state.claimer.as_ref(), escrow_state.mint.as_ref()],
+        bump,
+        payer = signer,
+        space = UserAccount::space()
+    )]
+    pub user_data: Account<'info, UserAccount>,
+
     #[account(
         mut,
         constraint = escrow_state.offerer == *offerer.key,
@@ -1062,6 +1198,8 @@ pub struct ClaimPayOutWithExtData<'info> {
     pub vault_authority: AccountInfo<'info>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: Program<'info, Token>,
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub system_program: Program<'info, System>,
     /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
     #[account(address = IX_ID)]
     pub ix_sysvar: AccountInfo<'info>
@@ -1082,7 +1220,7 @@ pub struct ClaimWithExtData<'info> {
     //Account of the token for initializer
     #[account(
         init_if_needed,
-        seeds = [b"uservault".as_ref(), claimer.key.as_ref(), escrow_state.mint.as_ref()],
+        seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), escrow_state.mint.as_ref()],
         bump,
         payer = signer,
         space = UserAccount::space()
@@ -1176,6 +1314,13 @@ pub struct UserAccount {
     pub nonce: u64,
     pub amount: u64,
     pub claim_nonce: u64,
+
+    pub success_volume: [u64; 3],
+    pub success_count: [u64; 3],
+    pub fail_volume: [u64; 3],
+    pub fail_count: [u64; 3],
+    pub coop_close_volume: [u64; 3],
+    pub coop_close_count: [u64; 3]
 }
 
 #[account]
@@ -1191,7 +1336,7 @@ impl EscrowState {
 
 impl UserAccount {
     pub fn space() -> usize {
-        8 + 8 + 8 + 8
+        8 + 8 + 8 + 8 + 144
     }
 }
 
@@ -1330,5 +1475,7 @@ pub enum SwapErrorCode {
     #[msg("Invalid nonce used")]
     InvalidNonce,
     #[msg("Invalid data account")]
-    InvalidDataAccount
+    InvalidDataAccount,
+    #[msg("Invalid user data account")]
+    InvalidUserData
 }

@@ -1,13 +1,13 @@
 [features]
 seeds = false
-[programs.devnet]
+[programs.localnet]
 test_anchor = "4xdY2JN9aBisRCrpz11wEWjosAjLoidxoVRvivJUMuNU"
 
 [registry]
 url = "https://anchor.projectserum.com"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "/home/adam/.config/solana/id.json"
 
 [scripts]
