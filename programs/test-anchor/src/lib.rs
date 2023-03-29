@@ -16,7 +16,7 @@ mod utils;
 #[path = "./txutils.rs"]
 mod txutils;
 
-declare_id!("4xdY2JN9aBisRCrpz11wEWjosAjLoidxoVRvivJUMuNU");
+declare_id!("6k1kyCtt2hTYHqS8s1QdkhY7mfFdFeYWfrzLjrzQRyaX");
 
 pub fn now_ts() -> Result<u64> {
     Ok(clock::Clock::get()?.unix_timestamp.try_into().unwrap())
@@ -239,6 +239,8 @@ pub mod test_anchor {
 
         ctx.accounts.escrow_state.expiry = expiry;
         ctx.accounts.escrow_state.hash = hash;
+
+        ctx.accounts.user_data.claim_nonce = nonce;
 
         token::transfer(
             ctx.accounts.into_transfer_to_pda_context(),
