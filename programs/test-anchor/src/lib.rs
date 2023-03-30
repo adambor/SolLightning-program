@@ -48,8 +48,21 @@ pub mod verification_utils {
 
         if account.kind==KIND_CHAIN || account.kind==KIND_CHAIN_NONCED {
             let output_index = u32::from_le_bytes(secret[0..4].try_into().unwrap());
-            let tx = txutils::txutils::parse_transaction(&secret[4..]);
-            let tx_output = &tx.tx_out[output_index as usize];
+            let opt_tx = txutils::txutils::verify_transaction(&secret[4..], output_index.into(), account.kind==KIND_CHAIN_NONCED);
+
+            require!(
+                opt_tx.is_some(),
+                SwapErrorCode::InvalidnSequence
+            );
+
+            let tx = opt_tx.unwrap();
+
+            require!(
+                tx.out.is_some(),
+                SwapErrorCode::InvalidVout
+            );
+
+            let tx_output = tx.out.unwrap();
 
             let mut output_data = Vec::with_capacity(8+8+tx_output.script.len());
             output_data.extend_from_slice(&u64::to_le_bytes(account.nonce));
@@ -64,14 +77,7 @@ pub mod verification_utils {
             );
 
             if account.kind==KIND_CHAIN_NONCED {
-                let n_sequence = tx.tx_in[0].sequence & 0x00FFFFFF;
-                for input in tx.tx_in.iter() {
-                    require!(
-                        n_sequence == (input.sequence & 0x00FFFFFF) && (input.sequence & 0xF0000000) == 0xF0000000,
-                        SwapErrorCode::InvalidnSequence
-                    );
-                }
-                let n_sequence_u64: u64 = (n_sequence as u64) & 0x00FFFFFF;
+                let n_sequence_u64: u64 = (tx.n_sequence as u64) & 0x00FFFFFF;
                 let locktime_u64: u64 = (tx.locktime as u64)-500000000;
                 let tx_nonce: u64 = (locktime_u64<<24) | n_sequence_u64;
                 require!(
@@ -1447,5 +1453,7 @@ pub enum SwapErrorCode {
     #[msg("Invalid data account")]
     InvalidDataAccount,
     #[msg("Invalid user data account")]
-    InvalidUserData
+    InvalidUserData,
+    #[msg("Invalid vout of the output used")]
+    InvalidVout
 }
