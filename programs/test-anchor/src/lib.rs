@@ -29,7 +29,7 @@ static KIND_CHAIN_NONCED: u8 = 2;
 pub mod verification_utils {
     use super::*;
 
-    pub fn check_claim(account: &Box<Account<EscrowState>>, ix_sysvar: &AccountInfo, secret: &Vec<u8>) -> Result<()> {
+    pub fn check_claim(account: &Box<Account<EscrowState>>, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<()> {
         let current_timestamp = now_ts()?;
 
         require!(
@@ -635,15 +635,21 @@ pub mod test_anchor {
     }
 
     //Claim the swap
-    pub fn claimer_claim_pay_out_with_ext_data(ctx: Context<ClaimPayOutWithExtData>, reversed_tx_id: [u8; 32]) -> Result<()> {
-        let (data_account_key, _data_account_bump) = Pubkey::find_program_address(&[b"data", &reversed_tx_id, ctx.accounts.signer.to_account_info().key.as_ref()], &ctx.program_id);
-
+    pub fn claimer_claim_pay_out_with_ext_data(ctx: Context<ClaimPayOutWithExtData>) -> Result<()> {
         require!(
-            data_account_key == *ctx.accounts.data.to_account_info().key,
-            SwapErrorCode::InvalidDataAccount
+            ctx.accounts.data.is_writable,
+            SwapErrorCode::InvalidAccountWritability
         );
 
-        verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &ctx.accounts.data.data)?;
+        {
+            let acc_data = ctx.accounts.data.try_borrow_data()?;
+            require!(
+                acc_data[0..32]==ctx.accounts.signer.key.to_bytes(),
+                SwapErrorCode::InvalidUserData
+            );
+    
+            verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &acc_data[32..])?;
+        }
 
         let (_vault_authority, vault_authority_bump) =
             Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
@@ -656,6 +662,13 @@ pub mod test_anchor {
             ctx.accounts.escrow_state.initializer_amount,
         )?;
 
+        let mut acc_balance = ctx.accounts.data.try_borrow_mut_lamports()?;
+        let balance: u64 = **acc_balance;
+        **acc_balance = 0;
+
+        let mut signer_balance = ctx.accounts.signer.try_borrow_mut_lamports()?;
+        **signer_balance += balance;
+
         emit!(ClaimEvent {
             hash: ctx.accounts.escrow_state.hash,
             secret: [0; 32].to_vec()
@@ -665,19 +678,32 @@ pub mod test_anchor {
     }
 
     //Claim the swap
-    pub fn claimer_claim_with_ext_data(ctx: Context<ClaimWithExtData>, reversed_tx_id: [u8; 32]) -> Result<()> {
-        let (data_account_key, _block_header_bump) = Pubkey::find_program_address(&[b"data", &reversed_tx_id, ctx.accounts.signer.to_account_info().key.as_ref()], &ctx.program_id);
-
+    pub fn claimer_claim_with_ext_data(ctx: Context<ClaimWithExtData>) -> Result<()> {
         require!(
-            data_account_key == *ctx.accounts.data.to_account_info().key,
-            SwapErrorCode::InvalidDataAccount
+            ctx.accounts.data.is_writable,
+            SwapErrorCode::InvalidAccountWritability
         );
 
-        verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &ctx.accounts.data.data)?;
+        {
+            let acc_data = ctx.accounts.data.try_borrow_data()?;
+            require!(
+                acc_data[0..32]==ctx.accounts.signer.key.to_bytes(),
+                SwapErrorCode::InvalidUserData
+            );
+    
+            verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &acc_data[32..])?;
+        }
 
         ctx.accounts.user_data.amount += ctx.accounts.escrow_state.initializer_amount;
         ctx.accounts.user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
         ctx.accounts.user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
+
+        let mut acc_balance = ctx.accounts.data.try_borrow_mut_lamports()?;
+        let balance: u64 = **acc_balance;
+        **acc_balance = 0;
+
+        let mut signer_balance = ctx.accounts.signer.try_borrow_mut_lamports()?;
+        **signer_balance += balance;
 
         emit!(ClaimEvent {
             hash: ctx.accounts.escrow_state.hash,
@@ -687,13 +713,54 @@ pub mod test_anchor {
         Ok(())
     }
 
-    pub fn write_data(ctx: Context<WriteData>, _reversed_tx_id: [u8; 32], _size: u32, data: Vec<u8>) -> Result<()> {
-        ctx.accounts.data.data.extend_from_slice(&data);
+    pub fn init_data(ctx: Context<InitData>) -> Result<()> {
+        require!(
+            ctx.accounts.data.is_writable,
+            SwapErrorCode::InvalidAccountWritability
+        );
+
+        let mut acc_data = ctx.accounts.data.try_borrow_mut_data()?;
+        acc_data[0..32].copy_from_slice(&ctx.accounts.signer.key.to_bytes());
 
         Ok(())
     }
 
-    pub fn close_data(_ctx: Context<CloseData>, _reversed_tx_id: [u8; 32]) -> Result<()> {
+    pub fn write_data(ctx: Context<WriteDataAlt>, start: u32, data: Vec<u8>) -> Result<()> {
+        require!(
+            ctx.accounts.data.is_writable,
+            SwapErrorCode::InvalidAccountWritability
+        );
+
+        let mut acc_data = ctx.accounts.data.try_borrow_mut_data()?;
+        require!(
+            acc_data[0..32]==ctx.accounts.signer.key.to_bytes(),
+            SwapErrorCode::InvalidUserData
+        );
+
+        acc_data[((start+32) as usize)..(((start+32) as usize)+data.len())].copy_from_slice(&data);
+
+        Ok(())
+    }
+    
+    pub fn close_data(ctx: Context<CloseDataAlt>) -> Result<()> {
+        require!(
+            ctx.accounts.data.is_writable,
+            SwapErrorCode::InvalidAccountWritability
+        );
+
+        let acc_data = ctx.accounts.data.try_borrow_data()?;
+        require!(
+            acc_data[0..32]==ctx.accounts.signer.key.to_bytes(),
+            SwapErrorCode::InvalidUserData
+        );
+
+        let mut acc_balance = ctx.accounts.data.try_borrow_mut_lamports()?;
+        let balance: u64 = **acc_balance;
+        **acc_balance = 0;
+
+        let mut signer_balance = ctx.accounts.signer.try_borrow_mut_lamports()?;
+        **signer_balance += balance;
+
         Ok(())
     }
 }
@@ -1162,11 +1229,9 @@ pub struct ClaimPayOutWithExtData<'info> {
     )]
     pub vault: Box<Account<'info, TokenAccount>>,
     
-    #[account(
-        mut,
-        close = signer
-    )]
-    pub data: Box<Account<'info, Data>>,
+    /// CHECK: We will handle this ourselves
+    #[account(mut)]
+    pub data: UncheckedAccount<'info>,
 
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(
@@ -1212,11 +1277,9 @@ pub struct ClaimWithExtData<'info> {
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
     
-    #[account(
-        mut,
-        close = claimer
-    )]
-    pub data: Box<Account<'info, Data>>,
+    /// CHECK: We will handle this ourselves
+    #[account(mut)]
+    pub data: UncheckedAccount<'info>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub system_program: Program<'info, System>,
     /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
@@ -1225,41 +1288,39 @@ pub struct ClaimWithExtData<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(reversed_tx_id: [u8; 32], size: u32, start_index: u32, new_data: Vec<u8>)]
-pub struct WriteData<'info> {
+pub struct InitData<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub signer: Signer<'info>,
 
     //Data storage account
-    #[account(
-        init_if_needed,
-        seeds = [b"data".as_ref(), reversed_tx_id.as_ref(), signer.to_account_info().key.as_ref()],
-        bump,
-        payer = signer,
-        space = Data::space(size as usize)
-    )]
-    pub data: Box<Account<'info, Data>>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub system_program: Program<'info, System>
+    /// CHECK: We will handle this ourselves
+    #[account(mut)]
+    pub data: Signer<'info>
 }
 
 #[derive(Accounts)]
-#[instruction(reversed_tx_id: [u8; 32])]
-pub struct CloseData<'info> {
+pub struct WriteDataAlt<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub signer: Signer<'info>,
 
     //Data storage account
-    #[account(
-        mut,
-        seeds = [b"data".as_ref(), reversed_tx_id.as_ref(), signer.to_account_info().key.as_ref()],
-        bump,
-        close = signer
-    )]
-    pub data: Box<Account<'info, Data>>
+    /// CHECK: We will handle this ourselves
+    #[account(mut)]
+    pub data: UncheckedAccount<'info>
+}
+
+#[derive(Accounts)]
+pub struct CloseDataAlt<'info> {
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    //Data storage account
+    /// CHECK: We will handle this ourselves
+    #[account(mut)]
+    pub data: UncheckedAccount<'info>
 }
 
 #[account]
@@ -1455,5 +1516,7 @@ pub enum SwapErrorCode {
     #[msg("Invalid user data account")]
     InvalidUserData,
     #[msg("Invalid vout of the output used")]
-    InvalidVout
+    InvalidVout,
+    #[msg("Account cannot be written to")]
+    InvalidAccountWritability
 }

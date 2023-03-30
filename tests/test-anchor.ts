@@ -119,6 +119,7 @@ describe("test-anchor", () => {
   let initializerTokenAccountA;
   let claimerTokenAccountA;
 
+
   it("Initialize program state", async () => {
     // 1. Airdrop 1 SOL to payer
     const signature = await provider.connection.requestAirdrop(payer.publicKey, 1000000000);
@@ -179,6 +180,81 @@ describe("test-anchor", () => {
     )[0];
 
   });
+
+  it("Write data", async() => {
+    const fakeTxId = randomBytes(32);
+
+    const dataKey = anchor.web3.Keypair.generate();
+
+    const dataSize = 50*1024;
+    const accountSize = 32+dataSize;
+    const lamports = await provider.connection.getMinimumBalanceForRentExemption(accountSize);
+
+    const accIx = SystemProgram.createAccount({
+      fromPubkey: initializer.publicKey,
+      newAccountPubkey: dataKey.publicKey,
+      lamports,
+      space: accountSize,
+      programId: program.programId
+    });
+  
+    const initIx = await programPaidBy(initializer).methods
+      .initData()
+      .accounts({
+        signer: initializer.publicKey,
+        data: dataKey.publicKey
+      })
+      .signers([initializer, dataKey])
+      .instruction();
+
+    const tx = new anchor.web3.Transaction();
+    tx.add(accIx);
+    tx.add(initIx);
+
+    const signature = await provider.sendAndConfirm(tx, [initializer, dataKey]);
+
+    console.log("Init sent: ", signature);
+
+    const txs = [];
+    for(let i=0;i<50;i++) {
+      const writeTx = await programPaidBy(initializer).methods
+      .writeDataAlt(i*768, randomBytes(768))
+      .accounts({
+        signer: initializer.publicKey,
+        data: dataKey.publicKey
+      })
+      .signers([initializer])
+      .transaction();
+      const signature2 = await provider.connection.sendTransaction(writeTx, [initializer]);
+      console.log("Tx sent: ", signature2);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    let fetchedAccount = await provider.connection.getAccountInfo(dataKey.publicKey, "confirmed");
+
+    console.log("Fetched data acc: ", fetchedAccount);
+
+    const closeTx = await programPaidBy(initializer).methods
+      .closeDataAlt()
+      .accounts({
+        signer: initializer.publicKey,
+        data: dataKey.publicKey
+      })
+      .signers([initializer])
+      .transaction();
+
+    const signature3 = await provider.sendAndConfirm(closeTx, [initializer]);
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    fetchedAccount = await provider.connection.getAccountInfo(dataKey.publicKey, "confirmed");
+
+    console.log("Fetched data acc: ", fetchedAccount);
+
+  });
+
+  return;
 
   it("Deposit 1 to program", async () => {
     let result = await programPaidBy(initializer).methods
