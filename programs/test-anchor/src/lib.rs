@@ -30,12 +30,12 @@ pub mod verification_utils {
     use super::*;
 
     pub fn check_claim(account: &Box<Account<EscrowState>>, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<()> {
-        let current_timestamp = now_ts()?;
-
-        require!(
-            account.expiry >= current_timestamp,
-            SwapErrorCode::AlreadyExpired
-        );
+        // let current_timestamp = now_ts()?;
+        //
+        // require!(
+        //     account.expiry >= current_timestamp,
+        //     SwapErrorCode::AlreadyExpired
+        // );
 
         if account.kind==KIND_LN {
             let hash_result = hash::hash(&secret).to_bytes();
