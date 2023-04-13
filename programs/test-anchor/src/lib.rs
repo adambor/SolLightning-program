@@ -223,7 +223,7 @@ pub mod test_anchor {
         }
 
         // Check that ix is what we expect to have been sent
-        let result = verify_ed25519_ix(&ix, &ctx.accounts.claimer.to_account_info().key.to_bytes(), &msg);
+        let result = verify_ed25519_ix(&ix, &ctx.accounts.claimer.to_account_info().key.to_bytes(), &hash::hash(&msg).to_bytes());
 
         require!(
             result == 0,
@@ -318,7 +318,7 @@ pub mod test_anchor {
         msg.extend_from_slice(&auth_expiry.to_le_bytes());
 
         // Check that ix is what we expect to have been sent
-        let result = verify_ed25519_ix(&ix, &ctx.accounts.offerer.to_account_info().key.to_bytes(), &msg);
+        let result = verify_ed25519_ix(&ix, &ctx.accounts.offerer.to_account_info().key.to_bytes(), &hash::hash(&msg).to_bytes());
 
         require!(
             result == 0,
@@ -373,7 +373,7 @@ pub mod test_anchor {
             msg.extend_from_slice(&auth_expiry.to_le_bytes());
     
             // Check that ix is what we expect to have been sent
-            let result = verify_ed25519_ix(&ix, &ctx.accounts.escrow_state.claimer.to_bytes(), &msg);
+            let result = verify_ed25519_ix(&ix, &ctx.accounts.escrow_state.claimer.to_bytes(), &hash::hash(&msg).to_bytes());
     
             require!(
                 result == 0,
