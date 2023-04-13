@@ -19,7 +19,7 @@ default = []
 overflow-checks = true
 
 [dependencies]
-anchor-lang = {version = "0.24.1", features = ["init-if-needed"]}
-anchor-spl = {version = "0.24.1"}
+anchor-lang = {version = "0.26.0", features = ["init-if-needed"]}
+anchor-spl = {version = "0.26.0"}
 hex = "0.4.3"
 spl-token = {version = "3.3.0", features = ["no-entrypoint"]}

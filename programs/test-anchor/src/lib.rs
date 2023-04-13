@@ -11,10 +11,19 @@ use anchor_spl::token::{
 };
 use crate::utils::utils::verify_ed25519_ix;
 
+use errors::*;
+use state::*;
+use events::*;
+
 #[path = "./utils.rs"]
 mod utils;
 #[path = "./txutils.rs"]
 mod txutils;
+
+pub mod errors;
+pub mod state;
+pub mod events;
+
 
 declare_id!("6k1kyCtt2hTYHqS8s1QdkhY7mfFdFeYWfrzLjrzQRyaX");
 
@@ -167,7 +176,6 @@ pub mod test_anchor {
         kind: u8,
         confirmations: u16,
         auth_expiry: u64,
-        signature: [u8; 64],
         escrow_nonce: u64,
         pay_out: bool,
         txo_hash: [u8; 32] //Only for on-chain
@@ -213,7 +221,7 @@ pub mod test_anchor {
         }
 
         // Check that ix is what we expect to have been sent
-        let result = verify_ed25519_ix(&ix, &ctx.accounts.claimer.to_account_info().key.to_bytes(), &msg, &signature);
+        let result = verify_ed25519_ix(&ix, &ctx.accounts.claimer.to_account_info().key.to_bytes(), &msg);
 
         require!(
             result == 0,
@@ -274,7 +282,6 @@ pub mod test_anchor {
         confirmations: u16,
         escrow_nonce: u64,
         auth_expiry: u64,
-        signature: [u8; 64],
         pay_out: bool,
         txo_hash: [u8; 32] //Only for on-chain
     ) -> Result<()> {
@@ -309,7 +316,7 @@ pub mod test_anchor {
         msg.extend_from_slice(&auth_expiry.to_le_bytes());
 
         // Check that ix is what we expect to have been sent
-        let result = verify_ed25519_ix(&ix, &ctx.accounts.offerer.to_account_info().key.to_bytes(), &msg, &signature);
+        let result = verify_ed25519_ix(&ix, &ctx.accounts.offerer.to_account_info().key.to_bytes(), &msg);
 
         require!(
             result == 0,
@@ -350,57 +357,7 @@ pub mod test_anchor {
         Ok(())
     }
 
-    //Refund back to offerer once enough time has passed (withdrawing the tokens from the contract)
-    pub fn offerer_refund_pay_out(ctx: Context<RefundPayOut>) -> Result<()> {
-        require!(
-            ctx.accounts.escrow_state.expiry < now_ts()?,
-            SwapErrorCode::NotExpiredYet
-        );
-
-        if !ctx.accounts.escrow_state.pay_out {
-            //Check the remainingAccounts
-            let user_data_acc = &ctx.remaining_accounts[0];
-            let (user_data_address, _user_data_bump) =
-                Pubkey::find_program_address(&[USER_DATA_SEED, ctx.accounts.escrow_state.claimer.as_ref(), ctx.accounts.escrow_state.mint.as_ref()], ctx.program_id);
-            
-            require!(
-                user_data_address==*user_data_acc.key,
-                SwapErrorCode::InvalidUserData
-            );
-
-            require!(
-                user_data_acc.is_writable,
-                SwapErrorCode::InvalidUserData
-            );
-
-            let mut data = user_data_acc.try_borrow_mut_data()?;
-            let mut user_data = UserAccount::try_deserialize(&mut &**data)?;
-
-            user_data.fail_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
-            user_data.fail_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
-
-            user_data.try_serialize(&mut *data)?;
-        }
-
-        let (_vault_authority, vault_authority_bump) =
-            Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-        let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
-
-        token::transfer(
-            ctx.accounts
-                .into_transfer_to_initializer_context()
-                .with_signer(&[&authority_seeds[..]]),
-            ctx.accounts.escrow_state.initializer_amount,
-        )?;
-
-        emit!(RefundEvent {
-            hash: ctx.accounts.escrow_state.hash
-        });
-
-        Ok(())
-    }
-
-    //Refund back to offerer once enough time has passed (withdrawing the tokens from the contract)
+    //Refund back to offerer once enough time has passed
     pub fn offerer_refund(ctx: Context<Refund>) -> Result<()> {
         require!(
             ctx.accounts.escrow_state.expiry < now_ts()?,
@@ -432,75 +389,21 @@ pub mod test_anchor {
             user_data.try_serialize(&mut *data)?;
         }
 
-        ctx.accounts.user_data.amount += ctx.accounts.escrow_state.initializer_amount;
+        if ctx.accounts.escrow_state.pay_in {
+            let (_vault_authority, vault_authority_bump) =
+                Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
+            let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
 
-        emit!(RefundEvent {
-            hash: ctx.accounts.escrow_state.hash
-        });
-
-        Ok(())
-    }
-
-    //Refund back to offerer with a valid refund signature from claimer
-    pub fn offerer_refund_with_signature_pay_out(
-        ctx: Context<RefundWithSignaturePayOut>,
-        auth_expiry: u64,
-        signature: [u8; 64]
-    ) -> Result<()> {
-
-        let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar)?;
-
-        let mut msg = Vec::with_capacity(6+8+8+32+8);
-
-        msg.extend_from_slice(b"refund");
-        msg.extend_from_slice(&ctx.accounts.escrow_state.initializer_amount.to_le_bytes());
-        msg.extend_from_slice(&ctx.accounts.escrow_state.expiry.to_le_bytes());
-        msg.extend_from_slice(&ctx.accounts.escrow_state.hash);
-        msg.extend_from_slice(&auth_expiry.to_le_bytes());
-
-        // Check that ix is what we expect to have been sent
-        let result = verify_ed25519_ix(&ix, &ctx.accounts.claimer.key.to_bytes(), &msg, &signature);
-
-        require!(
-            result == 0,
-            SwapErrorCode::SignatureVerificationFailed
-        );
-
-        if !ctx.accounts.escrow_state.pay_out {
-            //Check the remainingAccounts
-            let user_data_acc = &ctx.remaining_accounts[0];
-            let (user_data_address, _user_data_bump) =
-                Pubkey::find_program_address(&[USER_DATA_SEED, ctx.accounts.escrow_state.claimer.as_ref(), ctx.accounts.escrow_state.mint.as_ref()], ctx.program_id);
-            
-            require!(
-                user_data_address==*user_data_acc.key,
-                SwapErrorCode::InvalidUserData
-            );
-
-            require!(
-                user_data_acc.is_writable,
-                SwapErrorCode::InvalidUserData
-            );
-
-            let mut data = user_data_acc.try_borrow_mut_data()?;
-            let mut user_data = UserAccount::try_deserialize(&mut &**data)?;
-
-            user_data.coop_close_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
-            user_data.coop_close_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
-
-            user_data.try_serialize(&mut *data)?;
+            token::transfer(
+                ctx.accounts
+                    .into_transfer_to_initializer_context()
+                    .with_signer(&[&authority_seeds[..]]),
+                ctx.accounts.escrow_state.initializer_amount,
+            )?;
+        } else {
+            let user_data = ctx.accounts.user_data.as_mut().unwrap();
+            user_data.amount += ctx.accounts.escrow_state.initializer_amount;
         }
-
-        let (_vault_authority, vault_authority_bump) =
-            Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-        let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
-
-        token::transfer(
-            ctx.accounts
-                .into_transfer_to_initializer_context()
-                .with_signer(&[&authority_seeds[..]]),
-            ctx.accounts.escrow_state.initializer_amount,
-        )?;
 
         emit!(RefundEvent {
             hash: ctx.accounts.escrow_state.hash
@@ -512,8 +415,7 @@ pub mod test_anchor {
     //Refund back to offerer with a valid refund signature from claimer
     pub fn offerer_refund_with_signature(
         ctx: Context<RefundWithSignature>,
-        auth_expiry: u64,
-        signature: [u8; 64]
+        auth_expiry: u64
     ) -> Result<()> {
 
         let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar)?;
@@ -527,7 +429,7 @@ pub mod test_anchor {
         msg.extend_from_slice(&auth_expiry.to_le_bytes());
 
         // Check that ix is what we expect to have been sent
-        let result = verify_ed25519_ix(&ix, &ctx.accounts.claimer.key.to_bytes(), &msg, &signature);
+        let result = verify_ed25519_ix(&ix, &ctx.accounts.claimer.key.to_bytes(), &msg);
 
         require!(
             result == 0,
@@ -558,8 +460,22 @@ pub mod test_anchor {
 
             user_data.try_serialize(&mut *data)?;
         }
-        
-        ctx.accounts.user_data.amount += ctx.accounts.escrow_state.initializer_amount;
+
+        if ctx.accounts.escrow_state.pay_in {
+            let (_vault_authority, vault_authority_bump) =
+                Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
+            let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
+
+            token::transfer(
+                ctx.accounts
+                    .into_transfer_to_initializer_context()
+                    .with_signer(&[&authority_seeds[..]]),
+                ctx.accounts.escrow_state.initializer_amount,
+            )?;
+        } else {
+            let user_data = ctx.accounts.user_data.as_mut().unwrap();
+            user_data.amount += ctx.accounts.escrow_state.initializer_amount;
+        }
 
         emit!(RefundEvent {
             hash: ctx.accounts.escrow_state.hash
@@ -596,119 +512,67 @@ pub mod test_anchor {
     // }
 
     //Claim the swap
-    pub fn claimer_claim_pay_out(ctx: Context<ClaimPayOut>, secret: Vec<u8>) -> Result<()> {
-        verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &secret)?;
-
-        let (_vault_authority, vault_authority_bump) =
-            Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-        let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
-
-        token::transfer(
-            ctx.accounts
-                .into_transfer_to_claimer_context()
-                .with_signer(&[&authority_seeds[..]]),
-            ctx.accounts.escrow_state.initializer_amount,
-        )?;
-
-        emit!(ClaimEvent {
-            hash: ctx.accounts.escrow_state.hash,
-            secret: secret
-        });
-
-        Ok(())
-    }
-
-    //Claim the swap
-    pub fn claimer_claim(ctx: Context<Claim>, secret: Vec<u8>) -> Result<()> {
-        verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &secret)?;
-
-        ctx.accounts.user_data.amount += ctx.accounts.escrow_state.initializer_amount;
-        ctx.accounts.user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
-        ctx.accounts.user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
-
-        emit!(ClaimEvent {
-            hash: ctx.accounts.escrow_state.hash,
-            secret: secret
-        });
-
-        Ok(())
-    }
-
-    //Claim the swap
-    pub fn claimer_claim_pay_out_with_ext_data(ctx: Context<ClaimPayOutWithExtData>) -> Result<()> {
-        require!(
-            ctx.accounts.data.is_writable,
-            SwapErrorCode::InvalidAccountWritability
-        );
-
-        {
-            let acc_data = ctx.accounts.data.try_borrow_data()?;
+    pub fn claimer_claim_pay_out(ctx: Context<Claim>, secret: Vec<u8>) -> Result<()> {
+        if ctx.accounts.data.is_some() {
+            let data_acc = ctx.accounts.data.as_mut().unwrap();
+            
             require!(
-                acc_data[0..32]==ctx.accounts.signer.key.to_bytes(),
-                SwapErrorCode::InvalidUserData
+                data_acc.is_writable,
+                SwapErrorCode::InvalidAccountWritability
             );
-    
-            verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &acc_data[32..])?;
+
+            {
+                let acc_data = data_acc.try_borrow_data()?;
+                require!(
+                    acc_data[0..32]==ctx.accounts.signer.key.to_bytes(),
+                    SwapErrorCode::InvalidUserData
+                );
+        
+                verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &acc_data[32..])?;
+            }
+        } else {
+            verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &secret)?;
         }
 
-        let (_vault_authority, vault_authority_bump) =
-            Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-        let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
+        if ctx.accounts.escrow_state.pay_out {
+            let (_vault_authority, vault_authority_bump) =
+                Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
+            let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
 
-        token::transfer(
-            ctx.accounts
-                .into_transfer_to_claimer_context()
-                .with_signer(&[&authority_seeds[..]]),
-            ctx.accounts.escrow_state.initializer_amount,
-        )?;
-
-        let mut acc_balance = ctx.accounts.data.try_borrow_mut_lamports()?;
-        let balance: u64 = **acc_balance;
-        **acc_balance = 0;
-
-        let mut signer_balance = ctx.accounts.signer.try_borrow_mut_lamports()?;
-        **signer_balance += balance;
-
-        emit!(ClaimEvent {
-            hash: ctx.accounts.escrow_state.hash,
-            secret: [0; 32].to_vec()
-        });
-
-        Ok(())
-    }
-
-    //Claim the swap
-    pub fn claimer_claim_with_ext_data(ctx: Context<ClaimWithExtData>) -> Result<()> {
-        require!(
-            ctx.accounts.data.is_writable,
-            SwapErrorCode::InvalidAccountWritability
-        );
-
-        {
-            let acc_data = ctx.accounts.data.try_borrow_data()?;
-            require!(
-                acc_data[0..32]==ctx.accounts.signer.key.to_bytes(),
-                SwapErrorCode::InvalidUserData
-            );
-    
-            verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &acc_data[32..])?;
+            token::transfer(
+                ctx.accounts
+                    .into_transfer_to_claimer_context()
+                    .with_signer(&[&authority_seeds[..]]),
+                ctx.accounts.escrow_state.initializer_amount,
+            )?;
+        } else {
+            let user_data = ctx.accounts.user_data.as_mut().unwrap();
+            user_data.amount += ctx.accounts.escrow_state.initializer_amount;
+            user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+            user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
         }
 
-        ctx.accounts.user_data.amount += ctx.accounts.escrow_state.initializer_amount;
-        ctx.accounts.user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
-        ctx.accounts.user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
+        if ctx.accounts.data.is_some() {
+            let data_acc = ctx.accounts.data.as_mut().unwrap();
+            
+            let mut acc_balance = data_acc.try_borrow_mut_lamports()?;
+            let balance: u64 = **acc_balance;
+            **acc_balance = 0;
 
-        let mut acc_balance = ctx.accounts.data.try_borrow_mut_lamports()?;
-        let balance: u64 = **acc_balance;
-        **acc_balance = 0;
+            let mut signer_balance = ctx.accounts.signer.try_borrow_mut_lamports()?;
+            **signer_balance += balance;
 
-        let mut signer_balance = ctx.accounts.signer.try_borrow_mut_lamports()?;
-        **signer_balance += balance;
+            emit!(ClaimEvent {
+                hash: ctx.accounts.escrow_state.hash,
+                secret: [0; 32].to_vec()
+            });
+        } else {
+            emit!(ClaimEvent {
+                hash: ctx.accounts.escrow_state.hash,
+                secret: secret
+            });
+        }
 
-        emit!(ClaimEvent {
-            hash: ctx.accounts.escrow_state.hash,
-            secret: [0; 32].to_vec()
-        });
 
         Ok(())
     }
@@ -973,7 +837,10 @@ pub struct Initialize<'info> {
 }
 
 #[derive(Accounts)]
-pub struct RefundPayOut<'info> {
+pub struct Refund<'info> {
+    ////////////////////////////////////////
+    //Main data
+    ////////////////////////////////////////
     #[account(mut)]
     pub offerer: Signer<'info>,
 
@@ -983,112 +850,54 @@ pub struct RefundPayOut<'info> {
 
     #[account(
         mut,
+        constraint = escrow_state.initializer_key == *initializer.key,
+        constraint = escrow_state.offerer == *offerer.key,
+        constraint = if escrow_state.pay_in { vault.is_some() && vault_authority.is_some() && initializer_deposit_token_account.is_some() && token_program.is_some() } else { user_data.is_some() },
+        constraint = initializer_deposit_token_account.is_none() || escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.as_ref().unwrap().to_account_info().key,
+        close = initializer
+    )]
+    pub escrow_state: Box<Account<'info, EscrowState>>,
+
+    ////////////////////////////////////////
+    //For Pay out
+    ////////////////////////////////////////
+    #[account(
+        mut,
         seeds = [b"vault".as_ref(), escrow_state.mint.as_ref()],
         bump,
     )]
-    pub vault: Account<'info, TokenAccount>,
+    pub vault: Option<Account<'info, TokenAccount>>,
     
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(
         seeds = [b"authority".as_ref()],
         bump
     )]
-    pub vault_authority: AccountInfo<'info>,
+    pub vault_authority: Option<AccountInfo<'info>>,
     
     #[account(mut)]
-    pub initializer_deposit_token_account: Account<'info, TokenAccount>,
-    
-    #[account(
-        mut,
-        constraint = escrow_state.initializer_key == *initializer.key,
-        constraint = escrow_state.offerer == *offerer.key,
-        constraint = escrow_state.pay_in,
-        constraint = escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.to_account_info().key,
-        close = initializer
-    )]
-    pub escrow_state: Box<Account<'info, EscrowState>>,
+    pub initializer_deposit_token_account: Option<Account<'info, TokenAccount>>,
 
     /// CHECK: This is not dangerous because we don't read or write from this account
-    pub token_program: Program<'info, Token>,
-}
+    pub token_program: Option<Program<'info, Token>>,
 
-
-#[derive(Accounts)]
-pub struct Refund<'info> {
-    #[account(mut)]
-    pub offerer: Signer<'info>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub initializer: AccountInfo<'info>,
-
+    ////////////////////////////////////////
+    //For NOT Pay out
+    ////////////////////////////////////////
     //Account of the token for initializer
     #[account(
         mut,
         seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), escrow_state.mint.as_ref()],
         bump,
     )]
-    pub user_data: Account<'info, UserAccount>,
-    
-    #[account(
-        mut,
-        constraint = escrow_state.initializer_key == *initializer.key,
-        constraint = escrow_state.offerer == *offerer.key,
-        constraint = !escrow_state.pay_in,
-        close = initializer
-    )]
-    pub escrow_state: Box<Account<'info, EscrowState>>,
-}
-
-#[derive(Accounts)]
-pub struct RefundWithSignaturePayOut<'info> {
-    #[account(mut)]
-    pub offerer: Signer<'info>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub initializer: AccountInfo<'info>,
-    
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub claimer: AccountInfo<'info>,
-
-    #[account(
-        mut,
-        seeds = [b"vault".as_ref(), escrow_state.mint.as_ref()],
-        bump,
-    )]
-    pub vault: Account<'info, TokenAccount>,
-    
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(
-        seeds = [b"authority".as_ref()],
-        bump
-    )]
-    pub vault_authority: AccountInfo<'info>,
-    
-    #[account(mut)]
-    pub initializer_deposit_token_account: Account<'info, TokenAccount>,
-    
-    #[account(
-        mut,
-        constraint = escrow_state.initializer_key == *initializer.key,
-        constraint = escrow_state.offerer == *offerer.key,
-        constraint = escrow_state.claimer == *claimer.key,
-        constraint = escrow_state.pay_in,
-        constraint = escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.to_account_info().key,
-        close = initializer
-    )]
-    pub escrow_state: Box<Account<'info, EscrowState>>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub token_program: Program<'info, Token>,
-    /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
-    #[account(address = IX_ID)]
-    pub ix_sysvar: AccountInfo<'info>
+    pub user_data: Option<Account<'info, UserAccount>>
 }
 
 #[derive(Accounts)]
 pub struct RefundWithSignature<'info> {
+    ///////////////////////////////////////////
+    //Main data
+    ///////////////////////////////////////////
     #[account(mut)]
     pub offerer: Signer<'info>,
 
@@ -1098,194 +907,118 @@ pub struct RefundWithSignature<'info> {
     
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub claimer: AccountInfo<'info>,
-
-    //Account of the token for initializer
-    #[account(
-        mut,
-        seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), escrow_state.mint.as_ref()],
-        bump,
-    )]
-    pub user_data: Account<'info, UserAccount>,
     
     #[account(
         mut,
         constraint = escrow_state.initializer_key == *initializer.key,
         constraint = escrow_state.offerer == *offerer.key,
         constraint = escrow_state.claimer == *claimer.key,
-        constraint = !escrow_state.pay_in,
+        constraint = if escrow_state.pay_in { vault.is_some() && vault_authority.is_some() && initializer_deposit_token_account.is_some() && token_program.is_some() } else { user_data.is_some() },
+        constraint = initializer_deposit_token_account.is_none() || escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.as_ref().unwrap().to_account_info().key,
         close = initializer
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
     /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
     #[account(address = IX_ID)]
-    pub ix_sysvar: AccountInfo<'info>
-}
+    pub ix_sysvar: AccountInfo<'info>,
 
-#[derive(Accounts)]
-pub struct ClaimPayOut<'info> {
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub signer: Signer<'info>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub offerer: AccountInfo<'info>,
-
-    #[account(mut)]
-    pub claimer_receive_token_account: Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        mut,
-        constraint = escrow_state.offerer == *offerer.key,
-        constraint = escrow_state.claimer_token_account == claimer_receive_token_account.key(),
-        constraint = escrow_state.pay_out,
-        close = signer
-    )]
-    pub escrow_state: Box<Account<'info, EscrowState>>,
-    
+    ///////////////////////////////////////////
+    //For pay out
+    ///////////////////////////////////////////
     #[account(
         mut,
         seeds = [b"vault".as_ref(), escrow_state.mint.as_ref()],
         bump,
     )]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault: Option<Account<'info, TokenAccount>>,
     
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(
         seeds = [b"authority".as_ref()],
         bump
     )]
-    pub vault_authority: AccountInfo<'info>,
+    pub vault_authority: Option<AccountInfo<'info>>,
+    
+    #[account(mut)]
+    pub initializer_deposit_token_account: Option<Account<'info, TokenAccount>>,
+
     /// CHECK: This is not dangerous because we don't read or write from this account
-    pub token_program: Program<'info, Token>,
-    /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
-    #[account(address = IX_ID)]
-    pub ix_sysvar: AccountInfo<'info>
+    pub token_program: Option<Program<'info, Token>>,
+
+    ///////////////////////////////////////////
+    //For NOT pay out
+    ///////////////////////////////////////////
+    //Account of the token for initializer
+    #[account(
+        mut,
+        seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), escrow_state.mint.as_ref()],
+        bump,
+    )]
+    pub user_data: Option<Account<'info, UserAccount>>,
 }
 
 #[derive(Accounts)]
 pub struct Claim<'info> {
+    ///////////////////////////////////////////
+    //Main data
+    ///////////////////////////////////////////
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub signer: Signer<'info>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub offerer: AccountInfo<'info>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub claimer: AccountInfo<'info>,
-
-    //Account of the token for initializer
-    #[account(
-        init_if_needed,
-        seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), escrow_state.mint.as_ref()],
-        bump,
-        payer = signer,
-        space = UserAccount::space()
-    )]
-    pub user_data: Account<'info, UserAccount>,
-
     #[account(
         mut,
-        constraint = escrow_state.offerer == *offerer.key,
-        constraint = escrow_state.claimer == *claimer.key,
-        constraint = !escrow_state.pay_out,
+        constraint = claimer_receive_token_account.is_none() || escrow_state.claimer_token_account == claimer_receive_token_account.as_ref().unwrap().key(),
+        constraint = if escrow_state.pay_out { claimer_receive_token_account.is_some() && vault.is_some() && vault_authority.is_some() && token_program.is_some() } else { user_data.is_some() },
         close = signer
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
-    
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub system_program: Program<'info, System>,
+
     /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
     #[account(address = IX_ID)]
-    pub ix_sysvar: AccountInfo<'info>
-}
-
-#[derive(Accounts)]
-pub struct ClaimPayOutWithExtData<'info> {
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub signer: Signer<'info>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub offerer: AccountInfo<'info>,
-
-    #[account(mut)]
-    pub claimer_receive_token_account: Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        mut,
-        constraint = escrow_state.offerer == *offerer.key,
-        constraint = escrow_state.claimer_token_account == claimer_receive_token_account.key(),
-        constraint = escrow_state.pay_out,
-        close = signer
-    )]
-    pub escrow_state: Box<Account<'info, EscrowState>>,
+    pub ix_sysvar: AccountInfo<'info>,
     
+    ///////////////////////////////////////////
+    //For Pay out
+    ///////////////////////////////////////////
+    #[account(mut)]
+    pub claimer_receive_token_account: Option<Box<Account<'info, TokenAccount>>>,
+
     #[account(
         mut,
         seeds = [b"vault".as_ref(), escrow_state.mint.as_ref()],
         bump,
     )]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault: Option<Box<Account<'info, TokenAccount>>>,
     
-    /// CHECK: We will handle this ourselves
-    #[account(mut)]
-    pub data: UncheckedAccount<'info>,
-
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(
         seeds = [b"authority".as_ref()],
         bump
     )]
-    pub vault_authority: AccountInfo<'info>,
+    pub vault_authority: Option<AccountInfo<'info>>,
     /// CHECK: This is not dangerous because we don't read or write from this account
-    pub token_program: Program<'info, Token>,
-    /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
-    #[account(address = IX_ID)]
-    pub ix_sysvar: AccountInfo<'info>
-}
+    pub token_program: Option<Program<'info, Token>>,
 
-#[derive(Accounts)]
-pub struct ClaimWithExtData<'info> {
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    #[account(mut)]
-    pub signer: Signer<'info>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub offerer: AccountInfo<'info>,
-    
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub claimer: AccountInfo<'info>,
-
+    ///////////////////////////////////////////
+    //For NOT Pay out
+    ///////////////////////////////////////////
     //Account of the token for initializer
     #[account(
-        init_if_needed,
-        seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), escrow_state.mint.as_ref()],
-        bump,
-        payer = signer,
-        space = UserAccount::space()
-    )]
-    pub user_data: Account<'info, UserAccount>,
-
-    #[account(
         mut,
-        constraint = escrow_state.offerer == *offerer.key,
-        constraint = escrow_state.claimer == *claimer.key,
-        constraint = !escrow_state.pay_out,
-        close = signer
+        seeds = [USER_DATA_SEED.as_ref(), escrow_state.claimer.key().as_ref(), escrow_state.mint.as_ref()],
+        bump
     )]
-    pub escrow_state: Box<Account<'info, EscrowState>>,
-    
-    /// CHECK: We will handle this ourselves
+    pub user_data: Option<Box<Account<'info, UserAccount>>>,
+
+    ///////////////////////////////////////////
+    //For Using external data account
+    ///////////////////////////////////////////
     #[account(mut)]
-    pub data: UncheckedAccount<'info>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub system_program: Program<'info, System>,
-    /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
-    #[account(address = IX_ID)]
-    pub ix_sysvar: AccountInfo<'info>
+    pub data: Option<UncheckedAccount<'info>>,
 }
+
 
 #[derive(Accounts)]
 pub struct InitData<'info> {
@@ -1323,66 +1056,6 @@ pub struct CloseDataAlt<'info> {
     pub data: UncheckedAccount<'info>
 }
 
-#[account]
-pub struct EscrowState {
-    pub kind: u8,
-    pub confirmations: u16,
-    pub nonce: u64,
-    pub hash: [u8; 32],
-
-    pub initializer_key: Pubkey,
-    pub pay_in: bool,
-
-    pub pay_out: bool,
-    
-    pub offerer: Pubkey,
-    pub initializer_deposit_token_account: Pubkey,
-
-    pub claimer: Pubkey,
-    pub claimer_token_account: Pubkey,
-    
-    pub initializer_amount: u64,
-    pub mint: Pubkey,
-    pub expiry: u64
-}
-
-#[account]
-pub struct UserAccount {
-    pub nonce: u64,
-    pub amount: u64,
-    pub claim_nonce: u64,
-
-    pub success_volume: [u64; 3],
-    pub success_count: [u64; 3],
-    pub fail_volume: [u64; 3],
-    pub fail_count: [u64; 3],
-    pub coop_close_volume: [u64; 3],
-    pub coop_close_count: [u64; 3]
-}
-
-#[account]
-pub struct Data {
-    pub data: Vec<u8>,
-}
-
-impl EscrowState {
-    pub fn space() -> usize {
-        8 + 1 + 2 + 8 + 192 + 8 + 8 + 1 + 32 + 1
-    }
-}
-
-impl UserAccount {
-    pub fn space() -> usize {
-        8 + 8 + 8 + 8 + 144
-    }
-}
-
-impl Data {
-    pub fn space(size: usize) -> usize {
-        8 + 4 + size
-    }
-}
-
 impl<'info> Deposit<'info> {
     fn into_transfer_to_pda_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
@@ -1418,105 +1091,39 @@ impl<'info> InitializePayIn<'info> {
     }
 }
 
-impl<'info> RefundPayOut<'info> {
+impl<'info> Refund<'info> {
     fn into_transfer_to_initializer_context(
         &self,
     ) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
-            from: self.vault.to_account_info(),
-            to: self.initializer_deposit_token_account.to_account_info(),
-            authority: self.vault_authority.clone(),
+            from: self.vault.as_ref().unwrap().to_account_info(),
+            to: self.initializer_deposit_token_account.as_ref().unwrap().to_account_info(),
+            authority: self.vault_authority.as_ref().unwrap().clone(),
         };
-        CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
+        CpiContext::new(self.token_program.as_ref().unwrap().to_account_info(), cpi_accounts)
     }
 }
 
-impl<'info> RefundWithSignaturePayOut<'info> {
+impl<'info> RefundWithSignature<'info> {
     fn into_transfer_to_initializer_context(
         &self,
     ) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
-            from: self.vault.to_account_info(),
-            to: self.initializer_deposit_token_account.to_account_info(),
-            authority: self.vault_authority.clone(),
+            from: self.vault.as_ref().unwrap().to_account_info(),
+            to: self.initializer_deposit_token_account.as_ref().unwrap().to_account_info(),
+            authority: self.vault_authority.as_ref().unwrap().clone(),
         };
-        CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
+        CpiContext::new(self.token_program.as_ref().unwrap().to_account_info(), cpi_accounts)
     }
 }
 
-impl<'info> ClaimPayOut<'info> {
+impl<'info> Claim<'info> {
     fn into_transfer_to_claimer_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
-            from: self.vault.to_account_info(),
-            to: self.claimer_receive_token_account.to_account_info(),
-            authority: self.vault_authority.clone(),
+            from: self.vault.as_ref().unwrap().to_account_info(),
+            to: self.claimer_receive_token_account.as_ref().unwrap().to_account_info(),
+            authority: self.vault_authority.as_ref().unwrap().clone(),
         };
-        CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
+        CpiContext::new(self.token_program.as_ref().unwrap().to_account_info(), cpi_accounts)
     }
-}
-
-impl<'info> ClaimPayOutWithExtData<'info> {
-    fn into_transfer_to_claimer_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
-        let cpi_accounts = Transfer {
-            from: self.vault.to_account_info(),
-            to: self.claimer_receive_token_account.to_account_info(),
-            authority: self.vault_authority.clone(),
-        };
-        CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
-    }
-}
-
-#[event]
-pub struct InitializeEvent {
-    pub hash: [u8; 32],
-    pub txo_hash: [u8; 32],
-    pub nonce: u64,
-    pub kind: u8
-}
-
-#[event]
-pub struct RefundEvent {
-    pub hash: [u8; 32]
-}
-
-#[event]
-pub struct ClaimEvent {
-    pub hash: [u8; 32],
-    pub secret: Vec<u8>
-}
-
-#[error_code]
-pub enum SwapErrorCode {
-    #[msg("Request not expired yet.")]
-    NotExpiredYet,
-    #[msg("Request already expired.")]
-    AlreadyExpired,
-    #[msg("Invalid secret provided.")]
-    InvalidSecret,
-    #[msg("Not enough funds.")]
-    InsufficientFunds,
-    #[msg("Signature verification failed.")]
-    SignatureVerificationFailed,
-    #[msg("Unknown type of the contract.")]
-    KindUnknown,
-    #[msg("Invalid program id for transaction verification.")]
-    InvalidTxVerifyProgramId,
-    #[msg("Invalid instruction for transaction verification.")]
-    InvalidTxVerifyIx,
-    #[msg("Invalid txid for transaction verification.")]
-    InvalidTxVerifyTxid,
-    #[msg("Invalid confirmations for transaction verification.")]
-    InvalidTxVerifyConfirmations,
-    #[msg("Invalid nSequence in tx inputs")]
-    InvalidnSequence,
-    #[msg("Invalid nonce used")]
-    InvalidNonce,
-    #[msg("Invalid data account")]
-    InvalidDataAccount,
-    #[msg("Invalid user data account")]
-    InvalidUserData,
-    #[msg("Invalid vout of the output used")]
-    InvalidVout,
-    #[msg("Account cannot be written to")]
-    InvalidAccountWritability
 }
