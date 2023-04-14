@@ -27,7 +27,7 @@ pub mod events;
 pub mod instructions;
 
 
-declare_id!("6k1kyCtt2hTYHqS8s1QdkhY7mfFdFeYWfrzLjrzQRyaX");
+declare_id!("BpVLd9ViKMbVnHhKJQbf5TBYGvkzTCTiwig8QffHvCmW");
 
 pub fn now_ts() -> Result<u64> {
     Ok(clock::Clock::get()?.unix_timestamp.try_into().unwrap())
@@ -467,7 +467,7 @@ pub mod test_anchor {
     // }
 
     //Claim the swap
-    pub fn claimer_claim_pay_out(ctx: Context<Claim>, secret: Vec<u8>) -> Result<()> {
+    pub fn claimer_claim(ctx: Context<Claim>, secret: Vec<u8>) -> Result<()> {
         if ctx.accounts.data.is_some() {
             let data_acc = ctx.accounts.data.as_mut().unwrap();
             

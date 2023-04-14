@@ -92,8 +92,7 @@ pub struct Withdraw<'info> {
 
     //Required data
     pub mint: Account<'info, Mint>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub system_program: Program<'info, System>,
+    
     pub rent: Sysvar<'info, Rent>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: Program<'info, Token>
