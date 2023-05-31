@@ -3,13 +3,15 @@ use anchor_lang::{
     solana_program::clock, 
     solana_program::hash,
     solana_program::sysvar::instructions::{ID as IX_ID, load_instruction_at_checked},
-    solana_program::instruction::Instruction
+    solana_program::instruction::Instruction,
+    system_program
 };
 use anchor_spl::token::{
     self, /*CloseAccount, */ Mint, Token,
     TokenAccount, Transfer
 };
 use crate::utils::utils::verify_ed25519_ix;
+use std::cmp;
 
 use errors::*;
 use state::*;
@@ -27,7 +29,7 @@ pub mod events;
 pub mod instructions;
 
 
-declare_id!("BpVLd9ViKMbVnHhKJQbf5TBYGvkzTCTiwig8QffHvCmW");
+declare_id!("8vowxbBrrfDU6Dz1bBCL4W9K5pTwsBLVAd8kJPsgLiLR");
 
 pub fn now_ts() -> Result<u64> {
     Ok(clock::Clock::get()?.unix_timestamp.try_into().unwrap())
@@ -171,7 +173,7 @@ pub mod test_anchor {
     //Initialize from wallet balance
     pub fn offerer_initialize_pay_in(
         ctx: Context<InitializePayIn>,
-        nonce: u64,
+        //nonce: u64,
         initializer_amount: u64,
         expiry: u64,
         hash: [u8; 32],
@@ -180,7 +182,7 @@ pub mod test_anchor {
         auth_expiry: u64,
         escrow_nonce: u64,
         pay_out: bool,
-        txo_hash: [u8; 32] //Only for on-chain
+        txo_hash: [u8; 32], //Only for on-chain
     ) -> Result<()> {
         require!(
             kind <= 2,
@@ -192,43 +194,43 @@ pub mod test_anchor {
             SwapErrorCode::AlreadyExpired
         );
 
-        require!(
-            nonce > ctx.accounts.user_data.claim_nonce,
-            SwapErrorCode::AlreadyExpired
-        );
+        // require!(
+        //     nonce > ctx.accounts.user_data.claim_nonce,
+        //     SwapErrorCode::AlreadyExpired
+        // );
         
-        let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar)?;
+        // let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar)?;
 
-        let mut msg;
-        if pay_out {
-            msg = Vec::with_capacity(16+8+32+8+8+32+1+2+8+1+32);
-        } else {
-            msg = Vec::with_capacity(16+8+32+8+8+32+1+2+8+1);
-        }
+        // let mut msg;
+        // if pay_out {
+        //     msg = Vec::with_capacity(16+8+32+8+8+32+1+2+8+1+32);
+        // } else {
+        //     msg = Vec::with_capacity(16+8+32+8+8+32+1+2+8+1);
+        // }
 
-        msg.extend_from_slice(b"claim_initialize");
-        msg.extend_from_slice(&nonce.to_le_bytes()); //Nonce
-        msg.extend_from_slice(&ctx.accounts.mint.to_account_info().key.to_bytes()); //Token
-        msg.extend_from_slice(&initializer_amount.to_le_bytes()); //Amount
-        msg.extend_from_slice(&expiry.to_le_bytes()); //Expiry
-        msg.extend_from_slice(&hash); //Hash
-        msg.extend_from_slice(&kind.to_le_bytes()); //Kind
-        msg.extend_from_slice(&confirmations.to_le_bytes()); //Confirmations
-        msg.extend_from_slice(&auth_expiry.to_le_bytes()); //Expiry
-        if pay_out {
-            msg.push(1); //Payout
-            msg.extend_from_slice(&ctx.accounts.claimer_token_account.to_account_info().key.to_bytes());
-        } else {
-            msg.push(0); //Payout
-        }
+        // msg.extend_from_slice(b"claim_initialize");
+        // msg.extend_from_slice(&nonce.to_le_bytes()); //Nonce
+        // msg.extend_from_slice(&ctx.accounts.mint.to_account_info().key.to_bytes()); //Token
+        // msg.extend_from_slice(&initializer_amount.to_le_bytes()); //Amount
+        // msg.extend_from_slice(&expiry.to_le_bytes()); //Expiry
+        // msg.extend_from_slice(&hash); //Hash
+        // msg.extend_from_slice(&kind.to_le_bytes()); //Kind
+        // msg.extend_from_slice(&confirmations.to_le_bytes()); //Confirmations
+        // msg.extend_from_slice(&auth_expiry.to_le_bytes()); //Expiry
+        // if pay_out {
+        //     msg.push(1); //Payout
+        //     msg.extend_from_slice(&ctx.accounts.claimer_token_account.to_account_info().key.to_bytes());
+        // } else {
+        //     msg.push(0); //Payout
+        // }
 
-        // Check that ix is what we expect to have been sent
-        let result = verify_ed25519_ix(&ix, &ctx.accounts.claimer.to_account_info().key.to_bytes(), &hash::hash(&msg).to_bytes());
+        // // Check that ix is what we expect to have been sent
+        // let result = verify_ed25519_ix(&ix, &ctx.accounts.claimer.to_account_info().key.to_bytes(), &hash::hash(&msg).to_bytes());
 
-        require!(
-            result == 0,
-            SwapErrorCode::SignatureVerificationFailed
-        );
+        // require!(
+        //     result == 0,
+        //     SwapErrorCode::SignatureVerificationFailed
+        // );
 
         ctx.accounts.escrow_state.kind = kind;
 
@@ -239,9 +241,8 @@ pub mod test_anchor {
         ctx.accounts.escrow_state.confirmations = confirmations;
         ctx.accounts.escrow_state.pay_in = true;
         ctx.accounts.escrow_state.pay_out = pay_out;
-        ctx.accounts.escrow_state.initializer_key = *ctx.accounts.initializer.key;
 
-        ctx.accounts.escrow_state.offerer = *ctx.accounts.initializer.key;
+        ctx.accounts.escrow_state.offerer = *ctx.accounts.offerer.key;
         ctx.accounts.escrow_state.claimer = *ctx.accounts.claimer.to_account_info().key;
         ctx.accounts.escrow_state.claimer_token_account = *ctx.accounts.claimer_token_account.to_account_info().key;
 
@@ -256,7 +257,7 @@ pub mod test_anchor {
         ctx.accounts.escrow_state.expiry = expiry;
         ctx.accounts.escrow_state.hash = hash;
 
-        ctx.accounts.user_data.claim_nonce = nonce;
+        //ctx.accounts.user_data.claim_nonce = nonce;
 
         token::transfer(
             ctx.accounts.into_transfer_to_pda_context(),
@@ -276,7 +277,7 @@ pub mod test_anchor {
     //Initialize from program balance
     pub fn offerer_initialize(
         ctx: Context<Initialize>,
-        nonce: u64,
+        //nonce: u64,
         initializer_amount: u64,
         expiry: u64,
         hash: [u8; 32],
@@ -285,7 +286,9 @@ pub mod test_anchor {
         escrow_nonce: u64,
         auth_expiry: u64,
         pay_out: bool,
-        txo_hash: [u8; 32] //Only for on-chain
+        txo_hash: [u8; 32], //Only for on-chain
+        security_deposit: u64,
+        claimer_bounty: u64
     ) -> Result<()> {
         require!(
             kind <= 2,
@@ -297,33 +300,50 @@ pub mod test_anchor {
             SwapErrorCode::AlreadyExpired
         );
 
-        require!(
-            nonce > ctx.accounts.user_data.nonce,
-            SwapErrorCode::AlreadyExpired
-        );
+        // require!(
+        //     nonce > ctx.accounts.user_data.nonce,
+        //     SwapErrorCode::AlreadyExpired
+        // );
 
-        let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar)?;
+        // let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar)?;
 
-        let mut msg = Vec::with_capacity(10+8+32+32+8+8+32+1+2+8);
+        // let mut msg = Vec::with_capacity(10+8+32+32+8+8+32+1+2+8);
 
-        msg.extend_from_slice(b"initialize");
-        msg.extend_from_slice(&nonce.to_le_bytes());
-        msg.extend_from_slice(&ctx.accounts.mint.to_account_info().key.to_bytes());
-        msg.extend_from_slice(&ctx.accounts.initializer.to_account_info().key.to_bytes());
-        msg.extend_from_slice(&initializer_amount.to_le_bytes());
-        msg.extend_from_slice(&expiry.to_le_bytes());
-        msg.extend_from_slice(&hash);
-        msg.extend_from_slice(&kind.to_le_bytes());
-        msg.extend_from_slice(&confirmations.to_le_bytes());
-        msg.extend_from_slice(&auth_expiry.to_le_bytes());
+        // msg.extend_from_slice(b"initialize");
+        // msg.extend_from_slice(&nonce.to_le_bytes());
+        // msg.extend_from_slice(&ctx.accounts.mint.to_account_info().key.to_bytes());
+        // msg.extend_from_slice(&ctx.accounts.initializer.to_account_info().key.to_bytes());
+        // msg.extend_from_slice(&initializer_amount.to_le_bytes());
+        // msg.extend_from_slice(&expiry.to_le_bytes());
+        // msg.extend_from_slice(&hash);
+        // msg.extend_from_slice(&kind.to_le_bytes());
+        // msg.extend_from_slice(&confirmations.to_le_bytes());
+        // msg.extend_from_slice(&auth_expiry.to_le_bytes());
 
-        // Check that ix is what we expect to have been sent
-        let result = verify_ed25519_ix(&ix, &ctx.accounts.offerer.to_account_info().key.to_bytes(), &hash::hash(&msg).to_bytes());
+        // // Check that ix is what we expect to have been sent
+        // let result = verify_ed25519_ix(&ix, &ctx.accounts.offerer.to_account_info().key.to_bytes(), &hash::hash(&msg).to_bytes());
 
-        require!(
-            result == 0,
-            SwapErrorCode::SignatureVerificationFailed
-        );
+        // require!(
+        //     result == 0,
+        //     SwapErrorCode::SignatureVerificationFailed
+        // );
+
+        let required_lamports = cmp::max(security_deposit, claimer_bounty);
+
+        let dst_starting_lamports = ctx.accounts.escrow_state.to_account_info().lamports();
+        if dst_starting_lamports < required_lamports {
+            let difference = required_lamports - dst_starting_lamports;
+            // let src_starting_lamports = ctx.accounts.claimer.to_account_info().lamports();
+            // **ctx.accounts.claimer.to_account_info().lamports.borrow_mut() = src_starting_lamports.checked_sub(difference).unwrap();
+            // **ctx.accounts.escrow_state.to_account_info().lamports.borrow_mut() = dst_starting_lamports.checked_add(difference).unwrap();
+            let cpi_program = ctx.accounts.system_program.to_account_info();
+            let transfer_lamports_instruction = system_program::Transfer{
+                from: ctx.accounts.claimer.to_account_info(),
+                to: ctx.accounts.escrow_state.to_account_info()
+            };
+            let cpi_ctx = CpiContext::new(cpi_program, transfer_lamports_instruction);
+            system_program::transfer(cpi_ctx, difference)?;
+        }
 
         ctx.accounts.escrow_state.kind = kind;
 
@@ -334,7 +354,6 @@ pub mod test_anchor {
         ctx.accounts.escrow_state.confirmations = confirmations;
         ctx.accounts.escrow_state.pay_in = false;
         ctx.accounts.escrow_state.pay_out = pay_out;
-        ctx.accounts.escrow_state.initializer_key = *ctx.accounts.initializer.key;
 
         ctx.accounts.escrow_state.offerer = *ctx.accounts.offerer.to_account_info().key;
         ctx.accounts.escrow_state.claimer = *ctx.accounts.claimer.to_account_info().key;
@@ -346,8 +365,12 @@ pub mod test_anchor {
         ctx.accounts.escrow_state.expiry = expiry;
         ctx.accounts.escrow_state.hash = hash;
 
+        ctx.accounts.escrow_state.security_deposit = security_deposit;
+        ctx.accounts.escrow_state.claimer_bounty = claimer_bounty;
+
         ctx.accounts.user_data.amount -= initializer_amount;
-        ctx.accounts.user_data.nonce = nonce;
+        
+        //ctx.accounts.user_data.nonce = nonce;
 
         emit!(InitializeEvent {
             hash: ctx.accounts.escrow_state.hash,
@@ -431,10 +454,32 @@ pub mod test_anchor {
             let user_data = ctx.accounts.user_data.as_mut().unwrap();
             user_data.amount += ctx.accounts.escrow_state.initializer_amount;
         }
-
+        
         emit!(RefundEvent {
             hash: ctx.accounts.escrow_state.hash
         });
+
+        let initializer = if ctx.accounts.escrow_state.pay_in { ctx.accounts.offerer.to_account_info() } else { ctx.accounts.claimer.to_account_info() };
+        if auth_expiry>0 {
+            //Coop closure, returns rent exempt to initializer
+            ctx.accounts.escrow_state.close(initializer).unwrap();
+        } else {
+            //Un-cooperative closure, security deposit goes to offerer
+            if ctx.accounts.escrow_state.security_deposit>0 {
+                let offerer_starting_lamports = ctx.accounts.offerer.to_account_info().lamports();
+                let initializer_starting_lamports = initializer.lamports();
+                let data_starting_lamports = ctx.accounts.escrow_state.to_account_info().lamports();
+
+                **ctx.accounts.offerer.to_account_info().lamports.borrow_mut() = offerer_starting_lamports.checked_add(ctx.accounts.escrow_state.security_deposit).unwrap();
+                **initializer.lamports.borrow_mut() = initializer_starting_lamports.checked_add(data_starting_lamports - ctx.accounts.escrow_state.security_deposit).unwrap();
+                **ctx.accounts.escrow_state.to_account_info().lamports.borrow_mut() = 0;
+            
+                ctx.accounts.escrow_state.to_account_info().assign(&system_program::ID);
+                ctx.accounts.escrow_state.to_account_info().realloc(0, false).unwrap();
+            } else {
+                ctx.accounts.escrow_state.close(initializer).unwrap();
+            }
+        }
 
         Ok(())
     }
@@ -528,6 +573,23 @@ pub mod test_anchor {
             });
         }
 
+        //Pay out claimer bounty to signer
+        if ctx.accounts.escrow_state.claimer_bounty>0 {
+            let data_starting_lamports = ctx.accounts.escrow_state.to_account_info().lamports();
+
+            let signer_starting_lamports = ctx.accounts.signer.to_account_info().lamports();
+            **ctx.accounts.signer.to_account_info().lamports.borrow_mut() = signer_starting_lamports.checked_add(ctx.accounts.escrow_state.claimer_bounty).unwrap();
+
+            let initializer_starting_lamports = ctx.accounts.initializer.lamports();
+            **ctx.accounts.initializer.lamports.borrow_mut() = initializer_starting_lamports.checked_add(data_starting_lamports - ctx.accounts.escrow_state.claimer_bounty).unwrap();
+            
+            **ctx.accounts.escrow_state.to_account_info().lamports.borrow_mut() = 0;
+        
+            ctx.accounts.escrow_state.to_account_info().assign(&system_program::ID);
+            ctx.accounts.escrow_state.to_account_info().realloc(0, false).unwrap();
+        } else {
+            ctx.accounts.escrow_state.close(ctx.accounts.initializer.to_account_info()).unwrap();
+        }
 
         Ok(())
     }

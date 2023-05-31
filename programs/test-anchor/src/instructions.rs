@@ -99,11 +99,14 @@ pub struct Withdraw<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(nonce: u64, initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool, txo_hash: [u8; 32])]
+#[instruction(/*nonce: u64,*/ initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool, txo_hash: [u8; 32])]
 pub struct InitializePayIn<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
-    pub initializer: Signer<'info>,
+    pub offerer: Signer<'info>,
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub claimer: Signer<'info>,
+
     //Account of the token for initializer
     #[account(
          mut,
@@ -111,8 +114,6 @@ pub struct InitializePayIn<'info> {
     )]
     pub initializer_deposit_token_account: Account<'info, TokenAccount>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub claimer: AccountInfo<'info>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub claimer_token_account: AccountInfo<'info>,
 
@@ -129,7 +130,7 @@ pub struct InitializePayIn<'info> {
         init,
         seeds = [b"state".as_ref(), escrow_seed.as_ref()],
         bump,
-        payer = initializer,
+        payer = offerer,
         space = EscrowState::space()
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
@@ -139,7 +140,7 @@ pub struct InitializePayIn<'info> {
         init_if_needed,
         seeds = [b"vault".as_ref(), mint.to_account_info().key.as_ref()],
         bump,
-        payer = initializer,
+        payer = offerer,
         token::mint = mint,
         token::authority = vault_authority,
     )]
@@ -158,18 +159,17 @@ pub struct InitializePayIn<'info> {
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
     /// CHECK: This is not dangerous because we don't read or write from this account
-    pub token_program: Program<'info, Token>,
-    /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
-    #[account(address = IX_ID)]
-    pub ix_sysvar: AccountInfo<'info>
+    pub token_program: Program<'info, Token>
 }
 
 #[derive(Accounts)]
-#[instruction(nonce: u64, initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool, txo_hash: [u8; 32])]
+#[instruction(/*nonce: u64, */initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool, txo_hash: [u8; 32])]
 pub struct Initialize<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
-    pub initializer: Signer<'info>,
+    pub claimer: Signer<'info>,
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub offerer: Signer<'info>,
 
     //Account of the token for initializer
     #[account(
@@ -181,10 +181,6 @@ pub struct Initialize<'info> {
     pub user_data: Account<'info, UserAccount>,
 
     /// CHECK: This is not dangerous because we don't read or write from this account
-    pub offerer: AccountInfo<'info>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub claimer: AccountInfo<'info>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
     pub claimer_token_account: AccountInfo<'info>,
     
     //Data storage account
@@ -192,7 +188,7 @@ pub struct Initialize<'info> {
         init,
         seeds = [b"state".as_ref(), escrow_seed.as_ref()],
         bump,
-        payer = initializer,
+        payer = claimer,
         space = EscrowState::space()
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
@@ -201,11 +197,7 @@ pub struct Initialize<'info> {
     pub mint: Account<'info, Mint>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
-    
-    /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
-    #[account(address = IX_ID)]
-    pub ix_sysvar: AccountInfo<'info>
+    pub rent: Sysvar<'info, Rent>
 }
 
 #[derive(Accounts)]
@@ -218,15 +210,13 @@ pub struct Refund<'info> {
 
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
-    pub initializer: AccountInfo<'info>,
+    pub claimer: AccountInfo<'info>,
 
     #[account(
         mut,
-        constraint = escrow_state.initializer_key == *initializer.key,
         constraint = escrow_state.offerer == *offerer.key,
         constraint = if escrow_state.pay_in { vault.is_some() && vault_authority.is_some() && initializer_deposit_token_account.is_some() && token_program.is_some() } else { user_data.is_some() },
-        constraint = initializer_deposit_token_account.is_none() || escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.as_ref().unwrap().to_account_info().key,
-        close = initializer
+        constraint = initializer_deposit_token_account.is_none() || escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.as_ref().unwrap().to_account_info().key
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
@@ -281,11 +271,15 @@ pub struct Claim<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
 
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    #[account(mut)]
+    pub initializer: AccountInfo<'info>,
+
     #[account(
         mut,
         constraint = claimer_receive_token_account.is_none() || escrow_state.claimer_token_account == claimer_receive_token_account.as_ref().unwrap().key(),
         constraint = if escrow_state.pay_out { claimer_receive_token_account.is_some() && vault.is_some() && vault_authority.is_some() && token_program.is_some() } else { user_data.is_some() },
-        close = signer
+        constraint = if escrow_state.pay_in { escrow_state.offerer == *initializer.key } else { escrow_state.claimer == *initializer.key },
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
@@ -399,7 +393,7 @@ impl<'info> InitializePayIn<'info> {
         let cpi_accounts = Transfer {
             from: self.initializer_deposit_token_account.to_account_info(),
             to: self.vault.to_account_info(),
-            authority: self.initializer.to_account_info(),
+            authority: self.offerer.to_account_info(),
         };
         CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
     }

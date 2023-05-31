@@ -7,9 +7,7 @@ pub struct EscrowState {
     pub nonce: u64,
     pub hash: [u8; 32],
 
-    pub initializer_key: Pubkey,
     pub pay_in: bool,
-
     pub pay_out: bool,
     
     pub offerer: Pubkey,
@@ -20,7 +18,10 @@ pub struct EscrowState {
     
     pub initializer_amount: u64,
     pub mint: Pubkey,
-    pub expiry: u64
+    pub expiry: u64,
+
+    pub claimer_bounty: u64,
+    pub security_deposit: u64,
 }
 
 #[account]
@@ -39,7 +40,7 @@ pub struct UserAccount {
 
 impl EscrowState {
     pub fn space() -> usize {
-        8 + 1 + 2 + 8 + 192 + 8 + 8 + 1 + 32 + 1
+        8 + 1 + 2 + 8 + 192 + 8 + 8 + 1 + 1 + 8 + 8
     }
 }
 

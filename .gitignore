@@ -8,3 +8,6 @@ test-ledger
 regenKeys.sh
 magicFix.sh
 magicFix2.sh
+airdropAbuse
+recoverKey
+

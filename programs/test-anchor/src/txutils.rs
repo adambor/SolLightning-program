@@ -306,6 +306,12 @@ pub mod txutils {
     
     pub fn verify_transaction(data: &[u8], vout: u64, verify_nonce: bool) -> Option<VerifyTransaction> {
         
+        //Security against spoofing bitcoin txs as merkle tree nodes
+        // https://blog.rsk.co/ru/noticia/the-design-of-bitcoin-merkle-trees-reduces-the-security-of-spv-clients/
+        if data.len()==64 {
+            return None;
+        }
+
         let version = u32::from_le_bytes(data[0..4].try_into().unwrap());
 
         let mut offset = 4;
