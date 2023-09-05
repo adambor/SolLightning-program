@@ -3,10 +3,12 @@ use anchor_lang::{
     solana_program::ed25519_program::{ID as ED25519_ID}
 };
 
+//Source: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification
 pub mod utils {
     use super::*;
 
-    /// Verify Ed25519Program instruction fields
+    //Verify Ed25519Program instruction fields,
+    // returns 0 success, positive integer i ncase of failure
     pub fn verify_ed25519_ix(ix: &Instruction, pubkey: &[u8], msg: &[u8]) -> u8 {
         // if  ix.program_id       != ED25519_ID                   ||  // The program id we expect
         //     ix.accounts.len()   != 0                            ||  // With no context accounts
