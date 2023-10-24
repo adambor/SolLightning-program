@@ -100,7 +100,8 @@ pub mod txutils {
             }
             if verify_nonce {
                 //https://academy.bit2me.com/en/que-son-los-nsequence/#how-do-nsequence-work?
-                //Ensure that every input uses the same nSequence, and the nSequence has no consensus meaning (first bit set)
+                //Ensure that every input uses the same nSequence,
+                // and the nSequence has no consensus meaning (nSequence>0xEFFFFFFF => first 4 bits set)
                 if n_sequence != (sequence & 0x00FFFFFF) || (sequence & 0xF0000000) != 0xF0000000 {
                     return None;
                 }
