@@ -68,6 +68,13 @@ pub mod txutils {
 
         let input_size_resp = read_var_int(data, offset);
 
+        //Check that segwit flag is not set (we only accept non-segwit transactions, or transactions with segwit data stripped)
+        if input_size_resp.0 == 0 && input_size_resp.1 == 1 {
+            if data[5] == 0x01 {
+                return None;
+            }
+        }
+
         offset += input_size_resp.1;
 
         let mut unset = true;
@@ -148,6 +155,31 @@ pub mod txutils {
             hash: hash
         });
 
+    }
+
+    //Computes txhash (double sha256) of the transaction, only works for
+    // non-segwit transactions, so segwit data has to be stripped out
+    // from the tx off-chain
+    //Format description: https://en.bitcoin.it/wiki/Transaction
+    pub fn get_transaction_hash(data: &[u8]) -> Option<[u8; 32]> {
+
+        //Security against spoofing bitcoin txs as merkle tree nodes
+        // https://blog.rsk.co/ru/noticia/the-design-of-bitcoin-merkle-trees-reduces-the-security-of-spv-clients/
+        if data.len()==64 {
+            return None;
+        }
+
+        let input_size_resp = read_var_int(data, 4);
+
+        //Check that segwit flag is not set (we only accept non-segwit transactions, or transactions with segwit data stripped)
+        if input_size_resp.0 == 0 && input_size_resp.1 == 1 {
+            if data[5] == 0x01 {
+                return None;
+            }
+        }
+
+        return Some(hash::hash(&hash::hash(&data).to_bytes()).to_bytes());
+    
     }
 
     // Checks if current transaction includes an instruction calling verify_transaction on btcrelay program

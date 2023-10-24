@@ -57,58 +57,80 @@ pub mod verification_utils {
             );
         }
 
-        if account.kind==KIND_CHAIN || account.kind==KIND_CHAIN_NONCED {
-            //Extract output index from secret
-            let output_index = u32::from_le_bytes(secret[0..4].try_into().unwrap());
-            //Verify transaction, starting from byte 4 of the secret
-            let opt_tx = txutils::txutils::verify_transaction(&secret[4..], output_index.into(), account.kind==KIND_CHAIN_NONCED);
+        //Check on-chain txns
+        if account.kind==KIND_CHAIN || account.kind==KIND_CHAIN_NONCED || account.kind==KIND_CHAIN_TXHASH {
 
-            //Has to be properly parsed
-            require!(
-                opt_tx.is_some(),
-                SwapErrorCode::InvalidnSequence
-            );
+            //txhash to be checked with bitcoin relay program
+            let tx_hash: [u8; 32];
 
-            let tx = opt_tx.unwrap();
-
-            //Has to contain the required vout
-            require!(
-                tx.out.is_some(),
-                SwapErrorCode::InvalidVout
-            );
-
-            let tx_output = tx.out.unwrap();
-
-            //Extract data from the vout
-            let mut output_data = Vec::with_capacity(8+8+tx_output.script.len());
-            output_data.extend_from_slice(&u64::to_le_bytes(account.nonce));
-            output_data.extend_from_slice(&u64::to_le_bytes(tx_output.value));
-            output_data.extend_from_slice(tx_output.script);
-
-            //Hash the nonce, output value and output script
-            let hash_result = hash::hash(&output_data).to_bytes();
-            require!(
-                hash_result == account.hash,
-                SwapErrorCode::InvalidSecret
-            );
-
-            if account.kind==KIND_CHAIN_NONCED {
-                //For the transaction nonce, we utilize nSequence and timelock,
-                // this uniquelly identifies the transaction output, even if it's an address re-use
-                let n_sequence_u64: u64 = (tx.n_sequence as u64) & 0x00FFFFFF;
-                let locktime_u64: u64 = (tx.locktime as u64)-500000000;
-                let tx_nonce: u64 = (locktime_u64<<24) | n_sequence_u64;
+            //On-chain transactions with defined required output, with or without nonce
+            if account.kind==KIND_CHAIN || account.kind==KIND_CHAIN_NONCED {
+                //Extract output index from secret
+                let output_index = u32::from_le_bytes(secret[0..4].try_into().unwrap());
+                //Verify transaction, starting from byte 4 of the secret
+                let opt_tx = txutils::txutils::verify_transaction(&secret[4..], output_index.into(), account.kind==KIND_CHAIN_NONCED);
+    
+                //Has to be properly parsed
                 require!(
-                    tx_nonce == account.nonce,
-                    SwapErrorCode::InvalidNonce
+                    opt_tx.is_some(),
+                    SwapErrorCode::InvalidTx
                 );
+    
+                let tx = opt_tx.unwrap();
+    
+                //Has to contain the required vout
+                require!(
+                    tx.out.is_some(),
+                    SwapErrorCode::InvalidVout
+                );
+    
+                let tx_output = tx.out.unwrap();
+    
+                //Extract data from the vout
+                let mut output_data = Vec::with_capacity(8+8+tx_output.script.len());
+                output_data.extend_from_slice(&u64::to_le_bytes(account.nonce));
+                output_data.extend_from_slice(&u64::to_le_bytes(tx_output.value));
+                output_data.extend_from_slice(tx_output.script);
+    
+                //Hash the nonce, output value and output script
+                let hash_result = hash::hash(&output_data).to_bytes();
+                require!(
+                    hash_result == account.hash,
+                    SwapErrorCode::InvalidSecret
+                );
+    
+                if account.kind==KIND_CHAIN_NONCED {
+                    //For the transaction nonce, we utilize nSequence and timelock,
+                    // this uniquelly identifies the transaction output, even if it's an address re-use
+                    let n_sequence_u64: u64 = (tx.n_sequence as u64) & 0x00FFFFFF;
+                    let locktime_u64: u64 = (tx.locktime as u64)-500000000;
+                    let tx_nonce: u64 = (locktime_u64<<24) | n_sequence_u64;
+                    require!(
+                        tx_nonce == account.nonce,
+                        SwapErrorCode::InvalidNonce
+                    );
+                }
+    
+                tx_hash = tx.hash;
+            } else { //if account.kind==KIND_CHAIN_TXHASH
+                //On-chain transactions with defined required txhash
+                let opt_tx_hash = txutils::txutils::get_transaction_hash(&secret);
+    
+                //Has to be properly parsed
+                require!(
+                    opt_tx_hash.is_some(),
+                    SwapErrorCode::InvalidTx
+                );
+    
+                tx_hash = opt_tx_hash.unwrap();
+    
             }
-
-            //Check that there was a previoys instruction verifying
+            
+            //Check that there was a previous instruction verifying
             // the transaction ID against btcrelay program
             let ix: Instruction = load_instruction_at_checked(0, ix_sysvar)?;
-            let verification_result = txutils::txutils::verify_tx_ix(&ix, &tx.hash, account.confirmations as u32)?;
-
+            let verification_result = txutils::txutils::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
+    
             require!(
                 verification_result != 10,
                 SwapErrorCode::InvalidTxVerifyProgramId

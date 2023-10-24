@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 pub static KIND_LN: u8 = 0;
 pub static KIND_CHAIN: u8 = 1;
 pub static KIND_CHAIN_NONCED: u8 = 2;
+pub static KIND_CHAIN_TXHASH: u8 = 3;
 
 //Swap contract between offerer and claimer
 // HTLC (hash-time locked contract) in case of KIND_LN
@@ -16,6 +17,7 @@ pub struct EscrowState {
     //Locking hash for the swap
     // KIND_LN - payment hash
     // KIND_CHAIN & KIND_CHAIN_NONCED - txo hash
+    // KIND_CHAIN_TXHASH - txhash
     pub hash: [u8; 32],
 
     //Whether the funds were deposited to the contract from external source

@@ -22,8 +22,8 @@ pub enum SwapErrorCode {
     InvalidTxVerifyTxid,
     #[msg("Invalid confirmations for transaction verification.")]
     InvalidTxVerifyConfirmations,
-    #[msg("Invalid nSequence in tx inputs")]
-    InvalidnSequence,
+    #[msg("Invalid transaction/nSequence")]
+    InvalidTx,
     #[msg("Invalid nonce used")]
     InvalidNonce,
     #[msg("Invalid data account")]
