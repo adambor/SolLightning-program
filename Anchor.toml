@@ -2,6 +2,8 @@
 seeds = false
 [programs.mainnet]
 test_anchor = "8vowxbBrrfDU6Dz1bBCL4W9K5pTwsBLVAd8kJPsgLiLR"
+[programs.localnet]
+test_anchor = "8vowxbBrrfDU6Dz1bBCL4W9K5pTwsBLVAd8kJPsgLiLR"
 
 [registry]
 url = "https://anchor.projectserum.com"

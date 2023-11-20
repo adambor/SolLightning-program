@@ -32,6 +32,7 @@ const userVaultSeed = "uservault";
 const authoritySeed = "authority";
 const mainStateSeed = "main_state";
 const stateSeed = "state";
+const BLOCK_ACCOUNT_SEED = "header";
 
 const blockHeader = {
   "chainWork": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,64,246,4,124,179,73,103,67,171,12,90,65],
@@ -955,6 +956,171 @@ describe("test-anchor", () => {
     }
 
     assert.ok(failed);
+  });
+
+  const txHash = Buffer.from("78ec2a70a93637006fd23eb9729c95383ceeca728f17d92034c3966ede250233", "hex").reverse();
+  const txMerkleProof = {"block_height":2539469,"merkle":["48834b6947f36de6959f49f9a6f186ededcfeb615f93048661f3c093129cf221","c0d4f9c3b1fe4129fcf0efe2eca809c9297271534865f31995e2c7342f0fe537","9ef25ad8e749a08bd3d6f34880d870e53e1ab68b7c653d211b0a157fadd6a393","9029151d142aad1d3dbbb6c23cb76a43702fe3989f46a0f844b4dcfbde65ae5b","6a060a5f296b5b4ca2bdcc18ffea40c614519ce7feeb963be7624bb28b7c194f"],"pos":13};
+  const blockHash = Buffer.from("000000000000000bc9733ac29f21038d2bb183f68f204d05bcf42b1097aadf5d", "hex").reverse();
+
+  const blockHashAccount = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from(anchor.utils.bytes.utf8.encode(BLOCK_ACCOUNT_SEED)), blockHash],
+    btcRelayProgram.programId
+  )[0];
+  const merkleProofBuff = txMerkleProof.merkle.map(val => Buffer.from(val, "hex").reverse());
+  const merklePos = txMerkleProof.pos;
+  const escrowStateKeyTxHash = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from(anchor.utils.bytes.utf8.encode(stateSeed)), txHash],
+    program.programId
+  )[0];
+
+  console.log("Data key: ", escrowStateKeyTxHash.toBase58())
+
+  it("Initialize TX_HASH swap type", async () => {
+    
+    const expiryTime = Math.floor(Date.now()/1000)+(12*60*60);
+
+    let result = await programPaidBy(initializer).methods
+      .offererInitializePayIn(
+        new anchor.BN(initializeAmount), 
+        new anchor.BN(expiryTime),
+        txHash,
+        new BN(3),
+        new BN(1),
+        new BN(expiryTime),
+        new BN(0),
+        true,
+        Buffer.alloc(32, 0)
+      )
+      .accounts({
+        offerer: initializer.publicKey,
+        initializerDepositTokenAccount: initializerTokenAccountA,
+        claimer: claimer.publicKey,
+        claimerTokenAccount: claimerTokenAccountA,
+        escrowState: escrowStateKeyTxHash,
+        userData: claimerVaultKey,
+        vault: vaultKey,
+        vaultAuthority: vaultAuthorityKey,        
+        mainState: mainStateKey,
+        mint: mintA,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        tokenProgram: TOKEN_PROGRAM_ID
+      })
+      .signers([initializer, claimer])
+      .instruction();
+
+    const tx = new anchor.web3.Transaction();
+    tx.add(result);
+    tx.feePayer = initializer.publicKey;
+    tx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+    tx.sign(initializer, claimer);
+
+    const initTxId = await provider.connection.sendTransaction(tx, [initializer, claimer], {
+      skipPreflight: true
+    });
+    await provider.connection.confirmTransaction(initTxId, "confirmed");
+
+    let fetchedEscrowState = await program.account.escrowState.fetch(escrowStateKeyTxHash);
+
+    // Check that the values in the escrow account match what we expect.
+    assert.ok(fetchedEscrowState.offerer.equals(initializer.publicKey));
+    assert.ok(fetchedEscrowState.initializerAmount.toNumber() == initializeAmount);
+    assert.ok(fetchedEscrowState.claimer.equals(claimer.publicKey));
+    assert.ok(fetchedEscrowState.payIn);
+    assert.ok(fetchedEscrowState.expiry.toNumber() == expiryTime);
+    assert.ok(Buffer.from(fetchedEscrowState.hash).equals(txHash));
+
+  });
+
+  it("Claim TX_HASH swap type", async() => {
+    const signatures = await provider.connection.getSignaturesForAddress(blockHashAccount, null, "confirmed");
+
+    console.log("Blockhash accs: ", signatures);
+
+    const coder = new anchor.BorshCoder(btcRelayProgram.idl);
+    const eventParser = new anchor.EventParser(btcRelayProgram.programId, coder);
+
+    const blockTx = await provider.connection.getTransaction(signatures[0].signature, {
+      commitment: "confirmed"
+    });
+
+    console.log(blockTx.meta.logMessages);
+    const events = eventParser.parseLogs(blockTx.meta.logMessages);
+
+    let commitedHeader;
+    for(let event of events) {
+      console.log("Check event: ", event);
+      if(event.name==="StoreHeader") {
+        if(Buffer.from(event.data.blockHash as any).equals(blockHash)) {
+          console.log("Correct event found!");
+          commitedHeader = event.data.header;
+          break;
+        }
+      }
+    }
+
+    if(commitedHeader==null) throw new Error("Committed header event not found!");
+
+    const verifyIx = await btcRelayProgram.methods
+      .verifyTransaction(
+        txHash,
+        1,
+        merklePos,
+        merkleProofBuff,
+        commitedHeader
+      )
+      .accounts({
+        signer: claimer.publicKey,
+        mainState: mainStateKeyBtcRelay
+      })
+      .signers([claimer])
+      .instruction();
+
+    const ix = await programPaidBy(claimer).methods
+      .claimerClaim(Buffer.alloc(0))
+      .accounts({
+        claimer: claimer.publicKey,
+        claimerReceiveTokenAccount: claimerTokenAccountA,
+        offerer: initializer.publicKey,
+        initializer: initializer.publicKey,
+        escrowState: escrowStateKeyTxHash,
+        userData: claimerVaultKey,
+        vault: vaultKey,
+        data: null,
+        vaultAuthority: vaultAuthorityKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        ixSysvar: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY
+      })
+      .signers([claimer])
+      .instruction();
+
+    const tx = new anchor.web3.Transaction();
+    tx.add(verifyIx);
+    tx.add(ix);
+    tx.feePayer = claimer.publicKey;
+    tx.recentBlockhash = (await provider.connection.getRecentBlockhash()).blockhash;
+
+    tx.sign(claimer);
+
+    const solTxData = tx.serialize();
+
+    let initialBalance = await getAccount(provider.connection, claimerTokenAccountA);
+
+    const solTxId = await provider.connection.sendRawTransaction(solTxData, {
+      skipPreflight: true
+    });
+    await provider.connection.confirmTransaction(solTxId, "confirmed");
+
+    console.log(tx);
+    console.log(solTxData.length);
+
+    let fetchedTakerTokenAccountA = await getAccount(provider.connection, claimerTokenAccountA);
+
+    console.log("Account balance beginning: ", initialBalance.amount);
+    console.log("Account balance after: ", fetchedTakerTokenAccountA.amount);
+
+    assert.ok(Number(fetchedTakerTokenAccountA.amount)-Number(initialBalance.amount) === initializeAmount);
+
   });
 
   /*it("Initialize escrow", async () => {

@@ -113,16 +113,10 @@ pub mod verification_utils {
     
                 tx_hash = tx.hash;
             } else { //if account.kind==KIND_CHAIN_TXHASH
-                //On-chain transactions with defined required txhash
-                let opt_tx_hash = txutils::txutils::get_transaction_hash(&secret);
-    
-                //Has to be properly parsed
-                require!(
-                    opt_tx_hash.is_some(),
-                    SwapErrorCode::InvalidTx
-                );
-    
-                tx_hash = opt_tx_hash.unwrap();
+                
+                //On-chain transaction with defined required tx ID/hash
+                //The required tx hash is the hash of the swap
+                tx_hash = account.hash;
     
             }
             
@@ -209,7 +203,7 @@ pub mod test_anchor {
         txo_hash: [u8; 32], //Only for on-chain
     ) -> Result<()> {
         require!(
-            kind <= 2,
+            kind <= 3,
             SwapErrorCode::KindUnknown
         );
 
@@ -280,7 +274,7 @@ pub mod test_anchor {
         claimer_bounty: u64
     ) -> Result<()> {
         require!(
-            kind <= 2,
+            kind <= 3,
             SwapErrorCode::KindUnknown
         );
 
