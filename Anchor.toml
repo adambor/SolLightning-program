@@ -9,7 +9,7 @@ test_anchor = "8vowxbBrrfDU6Dz1bBCL4W9K5pTwsBLVAd8kJPsgLiLR"
 url = "https://anchor.projectserum.com"
 
 [provider]
-cluster = "mainnet"
+cluster = "localnet"
 wallet = "/home/adam/mainnet.key"
 
 [scripts]

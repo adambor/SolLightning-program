@@ -929,9 +929,11 @@ describe("test-anchor", () => {
     assert.ok(Number(fetchedTakerTokenAccountA.amount) == 2*initializeAmount);
   });
 
-  it("Initialize escrow with signature and refund (not timed out yet)", async () => {
-    await initEscrowWithSignature(150000, 100000);
+  const blockLockTime = 100000;
 
+  it("Initialize escrow with signature and refund (timed out, but locked with blockheight), ixSysvar not provided", async () => {
+    await initEscrowWithSignature(150000, 100000, blockLockTime); //Already expired, but locked by blockheight, since it is <1_000_000_000
+  
     let failed = false;
     try {
       await programPaidBy(initializer).methods
@@ -945,18 +947,282 @@ describe("test-anchor", () => {
           vaultAuthority: null,
           initializerDepositTokenAccount: null,
           tokenProgram: null,
-
+          
           userData: userVaultKey,
 
           ixSysvar: null
         })
         .rpc();
-    } catch (e) {
+    } catch(e) {
+      console.error(e);
       failed = true;
     }
 
     assert.ok(failed);
   });
+
+  it("Initialize escrow with signature and refund (timed out, but locked with blockheight), ixSysvar provided", async () => {
+    
+    let failed = false;
+    try {
+      await programPaidBy(initializer).methods
+        .offererRefund(new anchor.BN(0))
+        .accounts({
+          offerer: initializer.publicKey,
+          claimer: claimer.publicKey,
+          escrowState: escrowStateKey,
+          
+          vault: null,
+          vaultAuthority: null,
+          initializerDepositTokenAccount: null,
+          tokenProgram: null,
+          
+          userData: userVaultKey,
+
+          ixSysvar: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY
+        })
+        .rpc();
+    } catch(e) {
+      console.error(e);
+      failed = true;
+    }
+
+    assert.ok(failed);
+  });
+
+  it("Initialize escrow with signature and refund (timed out, but locked with blockheight), ix provided, but invalid blockheight", async () => {
+    
+    const verifyIx = await btcRelayProgram.methods
+      .blockHeight(
+        blockLockTime+100,
+        2
+      )
+      .accounts({
+        signer: initializer.publicKey,
+        mainState: mainStateKeyBtcRelay
+      })
+      .signers([claimer])
+      .instruction();
+
+    const ix = await programPaidBy(initializer).methods
+      .offererRefund(new anchor.BN(0))
+      .accounts({
+        offerer: initializer.publicKey,
+        claimer: claimer.publicKey,
+        escrowState: escrowStateKey,
+        
+        vault: null,
+        vaultAuthority: null,
+        initializerDepositTokenAccount: null,
+        tokenProgram: null,
+        
+        userData: userVaultKey,
+
+        ixSysvar: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY
+      })
+      .instruction();
+
+    const tx = new anchor.web3.Transaction();
+    tx.add(verifyIx);
+    tx.add(ix);
+    tx.feePayer = initializer.publicKey;
+    tx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+    tx.sign(initializer);
+
+    const initTxId = await provider.connection.sendTransaction(tx, [initializer], {
+      skipPreflight: true
+    });
+    const result = await provider.connection.confirmTransaction(initTxId, "confirmed");
+    
+    console.log(result.value.err);
+    const failed = result.value.err!=null;
+
+    assert.ok(failed);
+  });
+  
+  it("Initialize escrow with signature and refund (timed out, but locked with blockheight), ix provided, but invalid operation", async () => {
+
+    const verifyIx = await btcRelayProgram.methods
+      .blockHeight(
+        blockLockTime,
+        3
+      )
+      .accounts({
+        signer: initializer.publicKey,
+        mainState: mainStateKeyBtcRelay
+      })
+      .signers([claimer])
+      .instruction();
+
+    const ix = await programPaidBy(initializer).methods
+      .offererRefund(new anchor.BN(0))
+      .accounts({
+        offerer: initializer.publicKey,
+        claimer: claimer.publicKey,
+        escrowState: escrowStateKey,
+        
+        vault: null,
+        vaultAuthority: null,
+        initializerDepositTokenAccount: null,
+        tokenProgram: null,
+        
+        userData: userVaultKey,
+
+        ixSysvar: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY
+      })
+      .instruction();
+
+    const tx = new anchor.web3.Transaction();
+    tx.add(verifyIx);
+    tx.add(ix);
+    tx.feePayer = initializer.publicKey;
+    tx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+    tx.sign(initializer);
+
+    const initTxId = await provider.connection.sendTransaction(tx, [initializer], {
+      skipPreflight: true
+    });
+    const result = await provider.connection.confirmTransaction(initTxId, "confirmed");
+    
+    console.log(result.value.err);
+    const failed = result.value.err!=null;
+
+    assert.ok(failed);
+  });
+  
+  it("Initialize escrow with signature and refund (timed out, but locked with blockheight), ix provided and success", async () => {
+    
+    const verifyIx = await btcRelayProgram.methods
+    .blockHeight(
+      blockLockTime,
+      2
+    )
+    .accounts({
+      signer: initializer.publicKey,
+      mainState: mainStateKeyBtcRelay
+    })
+    .signers([claimer])
+    .instruction();
+
+    const ix = await programPaidBy(initializer).methods
+      .offererRefund(new anchor.BN(0))
+      .accounts({
+        offerer: initializer.publicKey,
+        claimer: claimer.publicKey,
+        escrowState: escrowStateKey,
+        
+        vault: null,
+        vaultAuthority: null,
+        initializerDepositTokenAccount: null,
+        tokenProgram: null,
+        
+        userData: userVaultKey,
+
+        ixSysvar: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY
+      })
+      .instruction();
+
+    const tx = new anchor.web3.Transaction();
+    tx.add(verifyIx);
+    tx.add(ix);
+    tx.feePayer = initializer.publicKey;
+    tx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+    tx.sign(initializer);
+
+    const initTxId = await provider.connection.sendTransaction(tx, [initializer], {
+      skipPreflight: true
+    });
+    const result = await provider.connection.confirmTransaction(initTxId, "confirmed");
+    
+    assert.ok(result.value.err==null);
+
+    let fetchedTakerTokenAccountA = await getAccount(provider.connection, claimerTokenAccountA);
+    let fetchedUserVault = await program.account.userAccount.fetch(userVaultKey);
+
+    assert.ok(Number(fetchedUserVault.amount) == deposit1Amount+deposit2Amount-initializeAmount);
+    assert.ok(Number(fetchedTakerTokenAccountA.amount) == 2*initializeAmount);
+
+  });
+
+  it("Initialize escrow with signature and refund (timed out, but locked with blockheight in the future)", async () => {
+    const futureBlockHeight = 100000000;
+    await initEscrowWithSignature(150000, 100000, futureBlockHeight); //Already expired, but locked by blockheight, since it is <1_000_000_000
+
+    const verifyIx = await btcRelayProgram.methods
+    .blockHeight(
+      futureBlockHeight,
+      2
+    )
+    .accounts({
+      signer: initializer.publicKey,
+      mainState: mainStateKeyBtcRelay
+    })
+    .signers([claimer])
+    .instruction();
+
+    const ix = await programPaidBy(initializer).methods
+      .offererRefund(new anchor.BN(0))
+      .accounts({
+        offerer: initializer.publicKey,
+        claimer: claimer.publicKey,
+        escrowState: escrowStateKey,
+        
+        vault: null,
+        vaultAuthority: null,
+        initializerDepositTokenAccount: null,
+        tokenProgram: null,
+        
+        userData: userVaultKey,
+
+        ixSysvar: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY
+      })
+      .instruction();
+
+    const tx = new anchor.web3.Transaction();
+    tx.add(verifyIx);
+    tx.add(ix);
+    tx.feePayer = initializer.publicKey;
+    tx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+    tx.sign(initializer);
+
+    const initTxId = await provider.connection.sendTransaction(tx, [initializer], {
+      skipPreflight: true
+    });
+    const result = await provider.connection.confirmTransaction(initTxId, "confirmed");
+    
+    console.log(result.value.err);
+    assert.ok(result.value.err!=null);
+
+  });
+
+  // it("Initialize escrow with signature and refund (not timed out yet)", async () => {
+  //   await initEscrowWithSignature(150000, 100000);
+
+  //   let failed = false;
+  //   try {
+  //     await programPaidBy(initializer).methods
+  //       .offererRefund(new anchor.BN(0))
+  //       .accounts({
+  //         offerer: initializer.publicKey,
+  //         claimer: claimer.publicKey,
+  //         escrowState: escrowStateKey,
+          
+  //         vault: null,
+  //         vaultAuthority: null,
+  //         initializerDepositTokenAccount: null,
+  //         tokenProgram: null,
+
+  //         userData: userVaultKey,
+
+  //         ixSysvar: null
+  //       })
+  //       .rpc();
+  //   } catch (e) {
+  //     failed = true;
+  //   }
+
+  //   assert.ok(failed);
+  // });
 
   const txHash = Buffer.from("78ec2a70a93637006fd23eb9729c95383ceeca728f17d92034c3966ede250233", "hex").reverse();
   const txMerkleProof = {"block_height":2539469,"merkle":["48834b6947f36de6959f49f9a6f186ededcfeb615f93048661f3c093129cf221","c0d4f9c3b1fe4129fcf0efe2eca809c9297271534865f31995e2c7342f0fe537","9ef25ad8e749a08bd3d6f34880d870e53e1ab68b7c653d211b0a157fadd6a393","9029151d142aad1d3dbbb6c23cb76a43702fe3989f46a0f844b4dcfbde65ae5b","6a060a5f296b5b4ca2bdcc18ffea40c614519ce7feeb963be7624bb28b7c194f"],"pos":13};
