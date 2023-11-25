@@ -33,5 +33,13 @@ pub enum SwapErrorCode {
     #[msg("Invalid vout of the output used")]
     InvalidVout,
     #[msg("Account cannot be written to")]
-    InvalidAccountWritability
+    InvalidAccountWritability,
+    #[msg("Invalid program id for blockheight verification.")]
+    InvalidBlockheightVerifyProgramId,
+    #[msg("Invalid instruction for blockheight verification.")]
+    InvalidBlockheightVerifyIx,
+    #[msg("Invalid height for blockheight verification.")]
+    InvalidBlockheightVerifyHeight,
+    #[msg("Invalid operation for blockheight verification.")]
+    InvalidBlockheightVerifyOperation,
 }

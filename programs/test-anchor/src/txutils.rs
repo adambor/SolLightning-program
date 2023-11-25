@@ -6,7 +6,7 @@ use anchor_lang::{
 use std::str::FromStr;
 
 static BTC_RELAY_ID_BASE58: &str = "De2dsY5K3DXBDNzKUjE6KguVP5JUhveKNpMVRmRkazff";
-static IX_PREFIX: [u8; 8] = [
+static TX_VERIFY_IX_PREFIX: [u8; 8] = [
     0x9d,
     0x7e,
     0xc1,
@@ -15,6 +15,16 @@ static IX_PREFIX: [u8; 8] = [
     0x33,
     0x07,
     0x58
+];
+static BLOCKHEIGHT_IX_PREFIX: [u8; 8] = [
+    0xd3,
+    0xdc,
+    0xd0,
+    0x97,
+    0x3d,
+    0xae,
+    0xec,
+    0xea
 ];
 
 pub mod txutils {
@@ -158,31 +168,6 @@ pub mod txutils {
 
     }
 
-    //Computes txhash (double sha256) of the transaction, only works for
-    // non-segwit transactions, so segwit data has to be stripped out
-    // from the tx off-chain
-    //Format description: https://en.bitcoin.it/wiki/Transaction
-    pub fn get_transaction_hash(data: &[u8]) -> Option<[u8; 32]> {
-
-        //Security against spoofing bitcoin txs as merkle tree nodes
-        // https://blog.rsk.co/ru/noticia/the-design-of-bitcoin-merkle-trees-reduces-the-security-of-spv-clients/
-        if data.len()==64 {
-            return None;
-        }
-
-        let input_size_resp = read_var_int(data, 4);
-
-        //Check that segwit flag is not set (we only accept non-segwit transactions, or transactions with segwit data stripped)
-        if input_size_resp.0 == 0 && input_size_resp.1 == 1 {
-            if data[5] == 0x01 {
-                return None;
-            }
-        }
-
-        return Some(hash::hash(&hash::hash(&data).to_bytes()).to_bytes());
-    
-    }
-
     // Checks if current transaction includes an instruction calling verify_transaction on btcrelay program
     // Returns 0 on success, and positive integer on failure
     pub fn verify_tx_ix(ix: &Instruction, reversed_tx_id: &[u8; 32], confirmations: u32) -> Result<u8> {
@@ -199,7 +184,7 @@ pub mod txutils {
     // Verify serialized BtcRelay instruction data
     pub fn check_tx_data(data: &[u8], reversed_tx_id: &[u8; 32], confirmations: u32) -> u8 {
         for i in 0..8 {
-            if data[i] != IX_PREFIX[i] {
+            if data[i] != TX_VERIFY_IX_PREFIX[i] {
                 return 1;
             }
         }
@@ -211,6 +196,48 @@ pub mod txutils {
 
         let _confirmations = u32::from_le_bytes(data[40..44].try_into().unwrap());
         if confirmations != _confirmations {
+            return 3;
+        }
+
+        return 0;
+    }
+
+    // Checks current blockheight, by checking if the tx includes an instruction calling verify_transaction on btcrelay program
+    // Returns 0 on success, and positive integer on failure
+    //
+    // Verifies blockheight of the main chain
+    // Supports many operators
+    //  0 - blockheight has to be < value
+    //  1 - blockheight has to be <= value
+    //  2 - blockheight has to be > value
+    //  3 - blockheight has to be >= value
+    //  4 - blockheight has to be == value
+    pub fn verify_blockheight_ix(ix: &Instruction, blockheight: u32, operation: u32) -> Result<u8> {
+        let btc_relay_id: Pubkey = Pubkey::from_str(BTC_RELAY_ID_BASE58).unwrap();
+
+        if  ix.program_id       != btc_relay_id
+        {
+            return Ok(10);
+        }
+
+        return Ok(check_blockheight_data(&ix.data, blockheight, operation));
+    }
+
+    // Verify serialized BtcRelay instruction data
+    pub fn check_blockheight_data(data: &[u8], blockheight: u32, operation: u32) -> u8 {
+        for i in 0..8 {
+            if data[i] != BLOCKHEIGHT_IX_PREFIX[i] {
+                return 1;
+            }
+        }
+
+        let _blockheight = u32::from_le_bytes(data[8..12].try_into().unwrap());
+        if blockheight != _blockheight {
+            return 2;
+        }
+
+        let _operation = u32::from_le_bytes(data[12..16].try_into().unwrap());
+        if operation != _operation {
             return 3;
         }
 

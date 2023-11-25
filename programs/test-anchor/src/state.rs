@@ -63,19 +63,19 @@ pub struct UserAccount {
     // on-chain reputation //
     /////////////////////////
     //Volume of the successfully processed swaps, separate for every KIND_*
-    pub success_volume: [u64; 3],
+    pub success_volume: [u64; 4],
     //Count of the successfully processed swaps, separate for every KIND_*
-    pub success_count: [u64; 3],
+    pub success_count: [u64; 4],
 
     //Volume of the failed swaps, separate for every KIND_*
-    pub fail_volume: [u64; 3],
+    pub fail_volume: [u64; 4],
     //Count of the failed swaps, separate for every KIND_*
-    pub fail_count: [u64; 3],
+    pub fail_count: [u64; 4],
 
     //Volume of the cooperatively closed swaps, separate for every KIND_*
-    pub coop_close_volume: [u64; 3],
+    pub coop_close_volume: [u64; 4],
     //Count of the cooperatively closed swaps, separate for every KIND_*
-    pub coop_close_count: [u64; 3]
+    pub coop_close_count: [u64; 4]
 }
 
 impl EscrowState {
@@ -86,6 +86,6 @@ impl EscrowState {
 
 impl UserAccount {
     pub fn space() -> usize {
-        8 + 8 + 8 + 8 + 144
+        8 + 8 + 8 + 8 + (8*6*4)
     }
 }

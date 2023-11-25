@@ -34,6 +34,7 @@ pub fn now_ts() -> Result<u64> {
 
 static AUTHORITY_SEED: &[u8] = b"authority";
 static USER_DATA_SEED: &[u8] = b"uservault";
+static BLOCKHEIGHT_EXPIRY_THRESHOLD: u64 = 1000000000; //If expiry is < BLOCKHEIGHT_EXPIRY_THRESHOLD it is considered as expressed in blockheight instead of timestamp
 
 pub mod verification_utils {
     use super::*;
@@ -362,10 +363,38 @@ pub mod test_anchor {
             );
         } else {
             //Check if the contract is expired yet
-            require!(
-                ctx.accounts.escrow_state.expiry < now_ts()?,
-                SwapErrorCode::NotExpiredYet
-            );
+            if ctx.accounts.escrow_state.expiry < BLOCKHEIGHT_EXPIRY_THRESHOLD {
+                //Expiry is expressed in bitcoin blockheight
+                
+                //Check that there was a previous instruction verifying
+                // blockheight of btcrelay program
+                // btc_relay.blockheight > ctx.accounts.escrow_state.expiry
+                let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar.as_ref().unwrap())?;
+                let verification_result = txutils::txutils::verify_blockheight_ix(&ix, ctx.accounts.escrow_state.expiry.try_into().unwrap(), 2)?;
+
+                require!(
+                    verification_result != 10,
+                    SwapErrorCode::InvalidBlockheightVerifyProgramId
+                );
+                require!(
+                    verification_result != 1,
+                    SwapErrorCode::InvalidBlockheightVerifyIx
+                );
+                require!(
+                    verification_result != 2,
+                    SwapErrorCode::InvalidBlockheightVerifyHeight
+                );
+                require!(
+                    verification_result != 3,
+                    SwapErrorCode::InvalidBlockheightVerifyOperation
+                );
+            } else {
+                //Expiry is expressed as UNIX timestamp in seconds
+                require!(
+                    ctx.accounts.escrow_state.expiry < now_ts()?,
+                    SwapErrorCode::NotExpiredYet
+                );
+            }
         }
 
         //This is used to update the on-chain reputation of claimer
