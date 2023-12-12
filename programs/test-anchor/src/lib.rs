@@ -202,6 +202,7 @@ pub mod test_anchor {
         escrow_nonce: u64,
         pay_out: bool,
         txo_hash: [u8; 32], //Only for on-chain
+        sequence: u64
     ) -> Result<()> {
         require!(
             kind <= 3,
@@ -237,6 +238,7 @@ pub mod test_anchor {
 
         ctx.accounts.escrow_state.expiry = expiry;
         ctx.accounts.escrow_state.hash = hash;
+        ctx.accounts.escrow_state.sequence = sequence;
 
         token::transfer(
             ctx.accounts.into_transfer_to_pda_context(),
@@ -272,7 +274,8 @@ pub mod test_anchor {
         pay_out: bool,
         txo_hash: [u8; 32], //Only for on-chain
         security_deposit: u64,
-        claimer_bounty: u64
+        claimer_bounty: u64,
+        sequence: u64
     ) -> Result<()> {
         require!(
             kind <= 3,
@@ -323,6 +326,7 @@ pub mod test_anchor {
 
         ctx.accounts.escrow_state.expiry = expiry;
         ctx.accounts.escrow_state.hash = hash;
+        ctx.accounts.escrow_state.sequence = sequence;
 
         ctx.accounts.escrow_state.security_deposit = security_deposit;
         ctx.accounts.escrow_state.claimer_bounty = claimer_bounty;
@@ -347,11 +351,12 @@ pub mod test_anchor {
             let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar.as_ref().unwrap())?;
 
             //Construct "refund" message
-            let mut msg = Vec::with_capacity(6+8+8+32+8);
+            let mut msg = Vec::with_capacity(6+8+8+32+8+8);
             msg.extend_from_slice(b"refund");
             msg.extend_from_slice(&ctx.accounts.escrow_state.initializer_amount.to_le_bytes());
             msg.extend_from_slice(&ctx.accounts.escrow_state.expiry.to_le_bytes());
             msg.extend_from_slice(&ctx.accounts.escrow_state.hash);
+            msg.extend_from_slice(&ctx.accounts.escrow_state.sequence.to_le_bytes());
             msg.extend_from_slice(&auth_expiry.to_le_bytes());
     
             //Check that the ed25519 verify instruction verified the signature of the hash of the "refund" message
