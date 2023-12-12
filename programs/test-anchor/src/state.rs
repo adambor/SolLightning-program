@@ -48,7 +48,7 @@ pub struct EscrowState {
     pub security_deposit: u64,
 
     //Uniquely identifies this swap PDA
-    pub sequence: u64;
+    pub sequence: u64
 }
 
 //PDA format for storing user's (LP node's) balance and reputation

@@ -246,10 +246,24 @@ pub mod test_anchor {
         )?;
 
         emit!(InitializeEvent {
-            hash: ctx.accounts.escrow_state.hash,
             txo_hash: txo_hash,
+
+            kind: ctx.accounts.escrow_state.kind,
+            confirmations: ctx.accounts.escrow_state.confirmations,
             nonce: ctx.accounts.escrow_state.nonce,
-            kind: kind
+            hash: ctx.accounts.escrow_state.hash,
+            pay_in: ctx.accounts.escrow_state.pay_in,
+            pay_out: ctx.accounts.escrow_state.pay_out,
+            offerer: ctx.accounts.escrow_state.offerer,
+            initializer_deposit_token_account: ctx.accounts.escrow_state.initializer_deposit_token_account,
+            claimer: ctx.accounts.escrow_state.claimer,
+            claimer_token_account: ctx.accounts.escrow_state.claimer_token_account,
+            initializer_amount: ctx.accounts.escrow_state.initializer_amount,
+            mint: ctx.accounts.escrow_state.mint,
+            expiry: ctx.accounts.escrow_state.expiry,
+            claimer_bounty: ctx.accounts.escrow_state.claimer_bounty,
+            security_deposit: ctx.accounts.escrow_state.security_deposit,
+            sequence: ctx.accounts.escrow_state.sequence
         });
 
         Ok(())
@@ -334,10 +348,24 @@ pub mod test_anchor {
         ctx.accounts.user_data.amount -= initializer_amount;
         
         emit!(InitializeEvent {
-            hash: ctx.accounts.escrow_state.hash,
             txo_hash: txo_hash,
+
+            kind: ctx.accounts.escrow_state.kind,
+            confirmations: ctx.accounts.escrow_state.confirmations,
             nonce: ctx.accounts.escrow_state.nonce,
-            kind: kind
+            hash: ctx.accounts.escrow_state.hash,
+            pay_in: ctx.accounts.escrow_state.pay_in,
+            pay_out: ctx.accounts.escrow_state.pay_out,
+            offerer: ctx.accounts.escrow_state.offerer,
+            initializer_deposit_token_account: ctx.accounts.escrow_state.initializer_deposit_token_account,
+            claimer: ctx.accounts.escrow_state.claimer,
+            claimer_token_account: ctx.accounts.escrow_state.claimer_token_account,
+            initializer_amount: ctx.accounts.escrow_state.initializer_amount,
+            mint: ctx.accounts.escrow_state.mint,
+            expiry: ctx.accounts.escrow_state.expiry,
+            claimer_bounty: ctx.accounts.escrow_state.claimer_bounty,
+            security_deposit: ctx.accounts.escrow_state.security_deposit,
+            sequence: ctx.accounts.escrow_state.sequence
         });
 
         Ok(())
@@ -454,7 +482,8 @@ pub mod test_anchor {
         }
         
         emit!(RefundEvent {
-            hash: ctx.accounts.escrow_state.hash
+            hash: ctx.accounts.escrow_state.hash,
+            sequence: ctx.accounts.escrow_state.sequence
         });
 
         let initializer = if ctx.accounts.escrow_state.pay_in { ctx.accounts.offerer.to_account_info() } else { ctx.accounts.claimer.to_account_info() };
@@ -567,12 +596,14 @@ pub mod test_anchor {
 
             emit!(ClaimEvent {
                 hash: ctx.accounts.escrow_state.hash,
-                secret: [0; 32].to_vec()
+                secret: [0; 32].to_vec(),
+                sequence: ctx.accounts.escrow_state.sequence
             });
         } else {
             emit!(ClaimEvent {
                 hash: ctx.accounts.escrow_state.hash,
-                secret: secret
+                secret: secret,
+                sequence: ctx.accounts.escrow_state.sequence
             });
         }
 
