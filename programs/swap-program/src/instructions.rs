@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use crate::*;
 use crate::USER_DATA_SEED;
+use crate::SwapType;
 
 #[derive(Accounts)]
 #[instruction(amount: u64)]
@@ -91,7 +92,7 @@ pub struct Withdraw<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
+#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: SwapType, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
 pub struct InitializePayIn<'info> {
     #[account(mut)]
     pub offerer: Signer<'info>,
@@ -159,7 +160,7 @@ pub struct InitializePayIn<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
+#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: SwapType, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
 pub struct Initialize<'info> {
     #[account(mut)]
     pub claimer: Signer<'info>,

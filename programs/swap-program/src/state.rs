@@ -1,16 +1,13 @@
 use anchor_lang::prelude::*;
-
-pub static KIND_LN: u8 = 0;
-pub static KIND_CHAIN: u8 = 1;
-pub static KIND_CHAIN_NONCED: u8 = 2;
-pub static KIND_CHAIN_TXHASH: u8 = 3;
+use crate::SwapType;
+use crate::SWAP_TYPE_COUNT;
 
 //Swap contract between offerer and claimer
 // HTLC (hash-time locked contract) in case of KIND_LN
 // PTLC (proof-time locked contract, where proof is transaction inclusion through bitcoin relay) in case of KIND_CHAIN_*
 #[account]
 pub struct EscrowState {
-    pub kind: u8, //Kind of the swap, KIND_*
+    pub kind: SwapType, //Kind of the swap, KIND_*
     pub confirmations: u16, //On-chain confirmations required for swap (only on-chain swaps: KIND_CHAIN, KIND_CHAIN_NONCED)
     pub nonce: u64, //Nonce to prevent transaction replays (only KIND_CHAIN_NONCED swaps)
     
@@ -63,19 +60,19 @@ pub struct UserAccount {
     // on-chain reputation //
     /////////////////////////
     //Volume of the successfully processed swaps, separate for every KIND_*
-    pub success_volume: [u64; 4],
+    pub success_volume: [u64; SWAP_TYPE_COUNT],
     //Count of the successfully processed swaps, separate for every KIND_*
-    pub success_count: [u64; 4],
+    pub success_count: [u64; SWAP_TYPE_COUNT],
 
     //Volume of the failed swaps, separate for every KIND_*
-    pub fail_volume: [u64; 4],
+    pub fail_volume: [u64; SWAP_TYPE_COUNT],
     //Count of the failed swaps, separate for every KIND_*
-    pub fail_count: [u64; 4],
+    pub fail_count: [u64; SWAP_TYPE_COUNT],
 
     //Volume of the cooperatively closed swaps, separate for every KIND_*
-    pub coop_close_volume: [u64; 4],
+    pub coop_close_volume: [u64; SWAP_TYPE_COUNT],
     //Count of the cooperatively closed swaps, separate for every KIND_*
-    pub coop_close_count: [u64; 4]
+    pub coop_close_count: [u64; SWAP_TYPE_COUNT]
 }
 
 impl EscrowState {
@@ -86,6 +83,6 @@ impl EscrowState {
 
 impl UserAccount {
     pub fn space() -> usize {
-        8 + 8 + 8 + (8*6*4)
+        8 + 8 + 8 + (8*6*SWAP_TYPE_COUNT)
     }
 }

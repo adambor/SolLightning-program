@@ -1,11 +1,12 @@
 use anchor_lang::prelude::*;
+use crate::SwapType;
 
 #[event]
 pub struct InitializeEvent {
     pub hash: [u8; 32],
     pub txo_hash: [u8; 32],
     pub nonce: u64,
-    pub kind: u8,
+    pub kind: SwapType,
     pub sequence: u64
 }
 

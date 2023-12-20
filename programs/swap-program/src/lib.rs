@@ -13,11 +13,13 @@ use anchor_spl::token::{
 use crate::utils::utils::verify_ed25519_ix;
 use std::cmp;
 
+use enums::*;
 use errors::*;
 use state::*;
 use events::*;
 use instructions::*;
 
+mod enums;
 mod utils;
 mod txutils;
 mod errors;
@@ -45,85 +47,80 @@ pub mod verification_utils {
 
     //Verifies if the claim is claimable by the claimer, provided the secret
     pub fn check_claim(account: &Box<Account<EscrowState>>, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<()> {
-        //Check HTLC hash for lightning
-        if account.kind==KIND_LN {
-            let hash_result = hash::hash(&secret).to_bytes();
 
-            require!(
-                hash_result == account.hash,
-                SwapErrorCode::InvalidSecret
-            );
-        }
+        match account.kind {
+            SwapType::Htlc => {
+                //Check HTLC hash for lightning
+                let hash_result = hash::hash(&secret).to_bytes();
 
-        //Check on-chain txns
-        if account.kind==KIND_CHAIN || account.kind==KIND_CHAIN_NONCED || account.kind==KIND_CHAIN_TXHASH {
-
-            //txhash to be checked with bitcoin relay program
-            let tx_hash: [u8; 32];
-
-            //On-chain transactions with defined required output, with or without nonce
-            if account.kind==KIND_CHAIN || account.kind==KIND_CHAIN_NONCED {
-                //Extract output index from secret
-                let output_index = u32::from_le_bytes(secret[0..4].try_into().unwrap());
-                //Verify transaction, starting from byte 4 of the secret
-                let opt_tx = txutils::txutils::verify_transaction(&secret[4..], output_index.into(), account.kind==KIND_CHAIN_NONCED);
-    
-                //Has to be properly parsed
-                require!(
-                    opt_tx.is_some(),
-                    SwapErrorCode::InvalidTx
-                );
-    
-                let tx = opt_tx.unwrap();
-    
-                //Has to contain the required vout
-                require!(
-                    tx.out.is_some(),
-                    SwapErrorCode::InvalidVout
-                );
-    
-                let tx_output = tx.out.unwrap();
-    
-                //Extract data from the vout
-                let mut output_data = Vec::with_capacity(8+8+tx_output.script.len());
-                output_data.extend_from_slice(&u64::to_le_bytes(account.nonce));
-                output_data.extend_from_slice(&u64::to_le_bytes(tx_output.value));
-                output_data.extend_from_slice(tx_output.script);
-    
-                //Hash the nonce, output value and output script
-                let hash_result = hash::hash(&output_data).to_bytes();
                 require!(
                     hash_result == account.hash,
                     SwapErrorCode::InvalidSecret
                 );
-    
-                if account.kind==KIND_CHAIN_NONCED {
-                    //For the transaction nonce, we utilize nSequence and timelock,
-                    // this uniquelly identifies the transaction output, even if it's an address re-use
-                    let n_sequence_u64: u64 = (tx.n_sequence as u64) & 0x00FFFFFF;
-                    let locktime_u64: u64 = (tx.locktime as u64)-500000000;
-                    let tx_nonce: u64 = (locktime_u64<<24) | n_sequence_u64;
-                    require!(
-                        tx_nonce == account.nonce,
-                        SwapErrorCode::InvalidNonce
-                    );
-                }
-    
-                tx_hash = tx.hash;
-            } else { //if account.kind==KIND_CHAIN_TXHASH
+            },
+            SwapType::Chain | SwapType::ChainNonced | SwapType::ChainTxhash => {
+                //txhash to be checked with bitcoin relay program
+                let tx_hash: [u8; 32] = match account.kind {
+                    SwapType::ChainTxhash => account.hash,
+                    SwapType::Chain | SwapType::ChainNonced => {
+                        //Extract output index from secret
+                        let output_index = u32::from_le_bytes(secret[0..4].try_into().unwrap());
+                        //Verify transaction, starting from byte 4 of the secret
+                        let opt_tx = txutils::txutils::verify_transaction(&secret[4..], output_index.into(), account.kind==SwapType::ChainNonced);
+            
+                        //Has to be properly parsed
+                        require!(
+                            opt_tx.is_some(),
+                            SwapErrorCode::InvalidTx
+                        );
+            
+                        let tx = opt_tx.unwrap();
+            
+                        //Has to contain the required vout
+                        require!(
+                            tx.out.is_some(),
+                            SwapErrorCode::InvalidVout
+                        );
+            
+                        let tx_output = tx.out.unwrap();
+            
+                        //Extract data from the vout
+                        let mut output_data = Vec::with_capacity(8+8+tx_output.script.len());
+                        output_data.extend_from_slice(&u64::to_le_bytes(account.nonce));
+                        output_data.extend_from_slice(&u64::to_le_bytes(tx_output.value));
+                        output_data.extend_from_slice(tx_output.script);
+            
+                        //Hash the nonce, output value and output script
+                        let hash_result = hash::hash(&output_data).to_bytes();
+                        require!(
+                            hash_result == account.hash,
+                            SwapErrorCode::InvalidSecret
+                        );
+            
+                        if account.kind==SwapType::ChainNonced {
+                            //For the transaction nonce, we utilize nSequence and timelock,
+                            // this uniquelly identifies the transaction output, even if it's an address re-use
+                            let n_sequence_u64: u64 = (tx.n_sequence as u64) & 0x00FFFFFF;
+                            let locktime_u64: u64 = (tx.locktime as u64)-500000000;
+                            let tx_nonce: u64 = (locktime_u64<<24) | n_sequence_u64;
+                            require!(
+                                tx_nonce == account.nonce,
+                                SwapErrorCode::InvalidNonce
+                            );
+                        }
+            
+                        tx.hash
+                    },
+                    _ => panic!()
+                };
+            
+                //Check that there was a previous instruction verifying
+                // the transaction ID against btcrelay program
+                let ix: Instruction = load_instruction_at_checked(0, ix_sysvar)?;
                 
-                //On-chain transaction with defined required tx ID/hash
-                //The required tx hash is the hash of the swap
-                tx_hash = account.hash;
-    
+                //Throws on failure
+                txutils::txutils::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
             }
-            
-            //Check that there was a previous instruction verifying
-            // the transaction ID against btcrelay program
-            let ix: Instruction = load_instruction_at_checked(0, ix_sysvar)?;
-            
-            //Throws on failure
-            txutils::txutils::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
         }
 
         Ok(())
@@ -178,7 +175,7 @@ pub mod swap_program {
         initializer_amount: u64,
         expiry: u64,
         hash: [u8; 32],
-        kind: u8,
+        kind: SwapType,
         confirmations: u16,
         auth_expiry: u64,
         escrow_nonce: u64,
@@ -186,11 +183,6 @@ pub mod swap_program {
         txo_hash: [u8; 32], //Only for on-chain,
         sequence: u64
     ) -> Result<()> {
-        require!(
-            kind <= 3,
-            SwapErrorCode::KindUnknown
-        );
-
         require!(
             auth_expiry > now_ts()?,
             SwapErrorCode::AlreadyExpired
@@ -203,7 +195,7 @@ pub mod swap_program {
 
         ctx.accounts.escrow_state.kind = kind;
 
-        if kind==KIND_CHAIN_NONCED {
+        if kind==SwapType::ChainNonced {
             ctx.accounts.escrow_state.nonce = escrow_nonce;
         }
 
@@ -253,13 +245,13 @@ pub mod swap_program {
     // offerer will get this deposit as a compensation for the time value
     // of funds locked up in a contract
     //Signer (claimer), may also deposit a claimer_bounty, to incentivize
-    // watchtowers to claim this contract (only KIND_CHAIN_* swaps)
+    // watchtowers to claim this contract (only SwapType::Chain* swaps)
     pub fn offerer_initialize(
         ctx: Context<Initialize>,
         initializer_amount: u64,
         expiry: u64,
         hash: [u8; 32],
-        kind: u8,
+        kind: SwapType,
         confirmations: u16,
         escrow_nonce: u64,
         auth_expiry: u64,
@@ -269,11 +261,6 @@ pub mod swap_program {
         claimer_bounty: u64,
         sequence: u64
     ) -> Result<()> {
-        require!(
-            kind <= 3,
-            SwapErrorCode::KindUnknown
-        );
-
         require!(
             auth_expiry > now_ts()?,
             SwapErrorCode::AlreadyExpired
@@ -306,7 +293,7 @@ pub mod swap_program {
 
         ctx.accounts.escrow_state.kind = kind;
 
-        if kind==KIND_CHAIN_NONCED {
+        if kind==SwapType::ChainNonced {
             ctx.accounts.escrow_state.nonce = escrow_nonce;
         }
 
@@ -409,11 +396,11 @@ pub mod swap_program {
             let mut user_data = UserAccount::try_deserialize(&mut &**data)?;
 
             if auth_expiry>0 {
-                user_data.coop_close_volume[usize::from(ctx.accounts.escrow_state.kind)] = user_data.coop_close_volume[usize::from(ctx.accounts.escrow_state.kind)].saturating_add(ctx.accounts.escrow_state.initializer_amount);
-                user_data.coop_close_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
+                user_data.coop_close_volume[ctx.accounts.escrow_state.kind as usize] = user_data.coop_close_volume[ctx.accounts.escrow_state.kind as usize].saturating_add(ctx.accounts.escrow_state.initializer_amount);
+                user_data.coop_close_count[ctx.accounts.escrow_state.kind as usize] += 1;
             } else {
-                user_data.fail_volume[usize::from(ctx.accounts.escrow_state.kind)] = user_data.fail_volume[usize::from(ctx.accounts.escrow_state.kind)].saturating_add(ctx.accounts.escrow_state.initializer_amount);
-                user_data.fail_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
+                user_data.fail_volume[ctx.accounts.escrow_state.kind as usize] = user_data.fail_volume[ctx.accounts.escrow_state.kind as usize].saturating_add(ctx.accounts.escrow_state.initializer_amount);
+                user_data.fail_count[ctx.accounts.escrow_state.kind as usize] += 1;
             }
 
             user_data.try_serialize(&mut *data)?;
@@ -508,8 +495,8 @@ pub mod swap_program {
             //Pay out to internal wallet
             let user_data = ctx.accounts.user_data.as_mut().unwrap();
             user_data.amount += ctx.accounts.escrow_state.initializer_amount;
-            user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] = user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)].saturating_add(ctx.accounts.escrow_state.initializer_amount);
-            user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
+            user_data.success_volume[ctx.accounts.escrow_state.kind as usize] = user_data.success_volume[ctx.accounts.escrow_state.kind as usize].saturating_add(ctx.accounts.escrow_state.initializer_amount);
+            user_data.success_count[ctx.accounts.escrow_state.kind as usize] += 1;
         }
 
         if ctx.accounts.data.is_some() {
