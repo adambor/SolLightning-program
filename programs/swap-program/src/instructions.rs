@@ -119,7 +119,6 @@ pub struct InitializePayIn<'info> {
 
     //Account of the token for claimer
     #[account(
-        mut,
         seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
         bump
     )]
