@@ -58,4 +58,9 @@ pub enum SwapErrorCode {
     SignatureVerificationFailedInvalidHeader,
     #[msg("Signature verification failed: invalid data")]
     SignatureVerificationFailedInvalidData,
+    
+    #[msg("Invalid swap data: pay in")]
+    InvalidSwapDataPayIn,
+    #[msg("Invalid swap data: nonce")]
+    InvalidSwapDataNonce,
 }

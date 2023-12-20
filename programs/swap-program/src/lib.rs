@@ -1,7 +1,7 @@
 use anchor_lang::{
     prelude::*, 
     solana_program::clock, 
-    solana_program::sysvar::instructions::{ID as IX_ID},
+    solana_program::sysvar::instructions::ID as IX_ID,
     system_program
 };
 use anchor_spl::token::{
@@ -14,12 +14,14 @@ use enums::*;
 use errors::*;
 use state::*;
 use instructions::*;
+use structs::*;
 
 mod enums;
 mod errors;
 mod state;
 mod events;
 mod instructions;
+mod structs;
 
 mod utils;
 mod ixs;
@@ -84,17 +86,15 @@ pub mod swap_program {
     //Initialize from external source
     pub fn offerer_initialize_pay_in(
         ctx: Context<InitializePayIn>,
-        initializer_amount: u64,
-        expiry: u64,
-        hash: [u8; 32],
-        kind: SwapType,
-        confirmations: u16,
-        auth_expiry: u64,
-        escrow_nonce: u64,
-        pay_out: bool,
+        swap_data: SwapData,
         txo_hash: [u8; 32], //Only for on-chain,
-        sequence: u64
+        auth_expiry: u64
     ) -> Result<()> {
+
+        require!(
+            swap_data.pay_in,
+            SwapErrorCode::InvalidSwapDataPayIn
+        );
 
         ixs::initialize::process_initialize(
             &mut ctx.accounts.escrow_state,
@@ -103,23 +103,15 @@ pub mod swap_program {
             &ctx.accounts.claimer,
             &ctx.accounts.claimer_token_account,
             &ctx.accounts.mint,
-            initializer_amount,
-            expiry,
-            hash,
-            kind,
-            confirmations,
-            escrow_nonce,
-            auth_expiry,
-            pay_out,
+            &swap_data,
             txo_hash,
-            sequence
+            auth_expiry,
         )?;
 
         ctx.accounts.escrow_state.initializer_deposit_token_account = *ctx.accounts.initializer_deposit_token_account.to_account_info().key;
-
         token::transfer(
             ctx.accounts.get_transfer_to_pda_context(),
-            ctx.accounts.escrow_state.initializer_amount,
+            ctx.accounts.escrow_state.data.initializer_amount,
         )?;
 
         Ok(())
@@ -134,19 +126,17 @@ pub mod swap_program {
     // watchtowers to claim this contract (only SwapType::Chain* swaps)
     pub fn offerer_initialize(
         ctx: Context<Initialize>,
-        initializer_amount: u64,
-        expiry: u64,
-        hash: [u8; 32],
-        kind: SwapType,
-        confirmations: u16,
-        escrow_nonce: u64,
-        auth_expiry: u64,
-        pay_out: bool,
-        txo_hash: [u8; 32], //Only for on-chain
+        swap_data: SwapData,
         security_deposit: u64,
         claimer_bounty: u64,
-        sequence: u64
+        txo_hash: [u8; 32], //Only for on-chain
+        auth_expiry: u64
     ) -> Result<()> {
+
+        require!(
+            !swap_data.pay_in,
+            SwapErrorCode::InvalidSwapDataPayIn
+        );
 
         ixs::initialize::process_initialize(
             &mut ctx.accounts.escrow_state,
@@ -155,16 +145,9 @@ pub mod swap_program {
             &ctx.accounts.claimer,
             &ctx.accounts.claimer_token_account,
             &ctx.accounts.mint,
-            initializer_amount,
-            expiry,
-            hash,
-            kind,
-            confirmations,
-            escrow_nonce,
-            auth_expiry,
-            pay_out,
+            &swap_data,
             txo_hash,
-            sequence
+            auth_expiry,
         )?;
 
         //We can calculate only the maximum of the two, not a sum,
@@ -190,7 +173,7 @@ pub mod swap_program {
         ctx.accounts.escrow_state.security_deposit = security_deposit;
         ctx.accounts.escrow_state.claimer_bounty = claimer_bounty;
 
-        ctx.accounts.user_data.amount -= initializer_amount;
+        ctx.accounts.user_data.amount -= swap_data.initializer_amount;
 
         Ok(())
     }
@@ -201,7 +184,7 @@ pub mod swap_program {
         let is_cooperative = ixs::refund::process_refund(auth_expiry, &ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &mut ctx.accounts.user_data_claimer)?;
 
         //Refund to internal wallet
-        ctx.accounts.user_data.amount += ctx.accounts.escrow_state.initializer_amount;
+        ctx.accounts.user_data.amount += ctx.accounts.escrow_state.data.initializer_amount;
 
         ixs::refund::pay_security_deposit(&mut ctx.accounts.escrow_state, &mut ctx.accounts.offerer, &mut ctx.accounts.claimer, is_cooperative)?;
 
@@ -222,7 +205,7 @@ pub mod swap_program {
             ctx.accounts
                 .get_transfer_to_initializer_context()
                 .with_signer(&[&authority_seeds[..]]),
-            ctx.accounts.escrow_state.initializer_amount,
+            ctx.accounts.escrow_state.data.initializer_amount,
         )?;
 
         ixs::refund::pay_security_deposit(&mut ctx.accounts.escrow_state, &mut ctx.accounts.offerer, &mut ctx.accounts.claimer, is_cooperative)?;
@@ -232,12 +215,12 @@ pub mod swap_program {
 
     //Claim the swap using the "secret", or data in the provided "data" account
     pub fn claimer_claim(ctx: Context<Claim>, secret: Vec<u8>) -> Result<()> {
-        ixs::claim::process_claim(&ctx.accounts.signer, &ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &mut ctx.accounts.data, &secret)?;
+        ixs::claim::process_claim(&ctx.accounts.signer, &ctx.accounts.escrow_state.data, &ctx.accounts.ix_sysvar, &mut ctx.accounts.data, &secret)?;
 
         let user_data = &mut ctx.accounts.user_data;
-        user_data.amount += ctx.accounts.escrow_state.initializer_amount;
-        user_data.success_volume[ctx.accounts.escrow_state.kind as usize] = user_data.success_volume[ctx.accounts.escrow_state.kind as usize].saturating_add(ctx.accounts.escrow_state.initializer_amount);
-        user_data.success_count[ctx.accounts.escrow_state.kind as usize] += 1;
+        user_data.amount += ctx.accounts.escrow_state.data.initializer_amount;
+        user_data.success_volume[ctx.accounts.escrow_state.data.kind as usize] = user_data.success_volume[ctx.accounts.escrow_state.data.kind as usize].saturating_add(ctx.accounts.escrow_state.data.initializer_amount);
+        user_data.success_count[ctx.accounts.escrow_state.data.kind as usize] += 1;
 
         ixs::claim::pay_claimer_bounty(&ctx.accounts.signer, &ctx.accounts.initializer, &ctx.accounts.escrow_state)?;
 
@@ -246,7 +229,7 @@ pub mod swap_program {
 
     //Claim the swap using the "secret", or data in the provided "data" account
     pub fn claimer_claim_pay_out(ctx: Context<ClaimPayOut>, secret: Vec<u8>) -> Result<()> {
-        ixs::claim::process_claim(&ctx.accounts.signer, &ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &mut ctx.accounts.data, &secret)?;
+        ixs::claim::process_claim(&ctx.accounts.signer, &ctx.accounts.escrow_state.data, &ctx.accounts.ix_sysvar, &mut ctx.accounts.data, &secret)?;
 
         let (_vault_authority, vault_authority_bump) =
         Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
@@ -256,7 +239,7 @@ pub mod swap_program {
             ctx.accounts
                 .get_transfer_to_claimer_context()
                 .with_signer(&[&authority_seeds[..]]),
-            ctx.accounts.escrow_state.initializer_amount,
+            ctx.accounts.escrow_state.data.initializer_amount,
         )?;
 
         ixs::claim::pay_claimer_bounty(&ctx.accounts.signer, &ctx.accounts.initializer, &ctx.accounts.escrow_state)?;

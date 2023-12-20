@@ -1,39 +1,21 @@
 use anchor_lang::prelude::*;
-use crate::SwapType;
 use crate::SWAP_TYPE_COUNT;
+use crate::structs::SwapData;
 
 //Swap contract between offerer and claimer
 // HTLC (hash-time locked contract) in case of KIND_LN
 // PTLC (proof-time locked contract, where proof is transaction inclusion through bitcoin relay) in case of KIND_CHAIN_*
 #[account]
 pub struct EscrowState {
-    pub kind: SwapType, //Kind of the swap, KIND_*
-    pub confirmations: u16, //On-chain confirmations required for swap (only on-chain swaps: KIND_CHAIN, KIND_CHAIN_NONCED)
-    pub nonce: u64, //Nonce to prevent transaction replays (only KIND_CHAIN_NONCED swaps)
-    
-    //Locking hash for the swap
-    // KIND_LN - payment hash
-    // KIND_CHAIN & KIND_CHAIN_NONCED - txo hash
-    // KIND_CHAIN_TXHASH - txhash
-    pub hash: [u8; 32],
-
-    //Whether the funds were deposited to the contract from external source
-    //Used to determine if refund should be paid out to external wallet, or to the contract vault
-    pub pay_in: bool,
-
-    //Whether the funds should be paid out to external source
-    //Used to determine if payout should be paid out to external wallet, or to the contract vault
-    pub pay_out: bool,
+    pub data: SwapData,
     
     pub offerer: Pubkey, //Offerer, depositing funds into the swap contract
     pub initializer_deposit_token_account: Pubkey, //ATA of the offerer, left empty for non pay_in swaps
 
     pub claimer: Pubkey, //Claimer, able to claim the funds from the swap contract, when spend condition is met
     pub claimer_token_account: Pubkey, //ATA of the claimer, ignored for non pay_out swaps
-    
-    pub initializer_amount: u64, //Token amount
+
     pub mint: Pubkey, //Pubkey of the token mint
-    pub expiry: u64, //UNIX seconds expiry timestamp, offerer can refund the swap after this timestamp
 
     //Bounty for the watchtower claiming the swap (only for KIND_CHAIN & KIND_CHAIN_NONCED).
     //Alway paid as native Solana, in Lamports
@@ -43,9 +25,6 @@ pub struct EscrowState {
     //Used to cover transaction fee and compensate for time value of money locked up in the contract.
     //Alway paid as native Solana, in Lamports
     pub security_deposit: u64,
-
-    //Uniquely identifies this swap PDA
-    pub sequence: u64,
 
     pub bump: u8
 }

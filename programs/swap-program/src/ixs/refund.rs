@@ -29,21 +29,21 @@ pub fn process_refund(auth_expiry: u64, escrow_state: &Account<EscrowState>, ix_
     }
 
     //Update the on-chain reputation of claimer in case this was not pay_out swap
-    if !escrow_state.pay_out {
+    if !escrow_state.data.pay_out {
         let user_data_claimer = user_data_claimer.as_mut().expect("Claimer UserData not provided for pay_out=false swap");
 
         if is_cooperative {
-            user_data_claimer.coop_close_volume[escrow_state.kind as usize] = user_data_claimer.coop_close_volume[escrow_state.kind as usize].saturating_add(escrow_state.initializer_amount);
-            user_data_claimer.coop_close_count[escrow_state.kind as usize] += 1;
+            user_data_claimer.coop_close_volume[escrow_state.data.kind as usize] = user_data_claimer.coop_close_volume[escrow_state.data.kind as usize].saturating_add(escrow_state.data.initializer_amount);
+            user_data_claimer.coop_close_count[escrow_state.data.kind as usize] += 1;
         } else {
-            user_data_claimer.fail_volume[escrow_state.kind as usize] = user_data_claimer.fail_volume[escrow_state.kind as usize].saturating_add(escrow_state.initializer_amount);
-            user_data_claimer.fail_count[escrow_state.kind as usize] += 1;
+            user_data_claimer.fail_volume[escrow_state.data.kind as usize] = user_data_claimer.fail_volume[escrow_state.data.kind as usize].saturating_add(escrow_state.data.initializer_amount);
+            user_data_claimer.fail_count[escrow_state.data.kind as usize] += 1;
         }
     }
 
     emit!(RefundEvent {
-        hash: escrow_state.hash,
-        sequence: escrow_state.sequence
+        hash: escrow_state.data.hash,
+        sequence: escrow_state.data.sequence
     });
 
     Ok(is_cooperative)
@@ -58,10 +58,10 @@ pub fn verify_signature(auth_expiry: u64, escrow_state: &Account<EscrowState>, i
     //Construct "refund" message
     let mut msg = Vec::with_capacity(6+8+8+8+32+8);
     msg.extend_from_slice(b"refund");
-    msg.extend_from_slice(&escrow_state.initializer_amount.to_le_bytes());
-    msg.extend_from_slice(&escrow_state.expiry.to_le_bytes());
-    msg.extend_from_slice(&escrow_state.sequence.to_le_bytes());
-    msg.extend_from_slice(&escrow_state.hash);
+    msg.extend_from_slice(&escrow_state.data.initializer_amount.to_le_bytes());
+    msg.extend_from_slice(&escrow_state.data.expiry.to_le_bytes());
+    msg.extend_from_slice(&escrow_state.data.sequence.to_le_bytes());
+    msg.extend_from_slice(&escrow_state.data.hash);
     msg.extend_from_slice(&auth_expiry.to_le_bytes());
 
     //Check that the ed25519 verify instruction verified the signature of the hash of the "refund" message
@@ -74,7 +74,7 @@ pub fn verify_signature(auth_expiry: u64, escrow_state: &Account<EscrowState>, i
 //Verifies timeout refund using timestamp or btc relay blockheight, throws on failure
 pub fn verify_timeout(escrow_state: &Account<EscrowState>, ix_sysvar: &Option<AccountInfo>) -> Result<()> {
     //Check if the contract is expired yet
-    if escrow_state.expiry < crate::BLOCKHEIGHT_EXPIRY_THRESHOLD {
+    if escrow_state.data.expiry < crate::BLOCKHEIGHT_EXPIRY_THRESHOLD {
         //Expiry is expressed in bitcoin blockheight
         
         //Check that there was a previous instruction verifying
@@ -83,11 +83,11 @@ pub fn verify_timeout(escrow_state: &Account<EscrowState>, ix_sysvar: &Option<Ac
         let ix: Instruction = load_instruction_at_checked(0, ix_sysvar.as_ref().unwrap())?;
 
         //Throws on failure
-        crate::utils::btcrelay::verify_blockheight_ix(&ix, escrow_state.expiry.try_into().unwrap(), 2)?;
+        crate::utils::btcrelay::verify_blockheight_ix(&ix, escrow_state.data.expiry.try_into().unwrap(), 2)?;
     } else {
         //Expiry is expressed as UNIX timestamp in seconds
         require!(
-            escrow_state.expiry < now_ts()?,
+            escrow_state.data.expiry < now_ts()?,
             SwapErrorCode::NotExpiredYet
         );
     }
@@ -98,7 +98,7 @@ pub fn verify_timeout(escrow_state: &Account<EscrowState>, ix_sysvar: &Option<Ac
 //Pays out security deposit to offerer & pays the rest back to initializer
 pub fn pay_security_deposit<'info>(escrow_state: &mut Account<'info, EscrowState>, offerer: &mut Signer<'info>, claimer: &mut AccountInfo<'info>, is_cooperative: bool) -> Result<()> {
 
-    let initializer = if escrow_state.pay_in { offerer.to_account_info() } else { claimer.to_account_info() };
+    let initializer = if escrow_state.data.pay_in { offerer.to_account_info() } else { claimer.to_account_info() };
     if is_cooperative {
         //Coop closure, whole PDA amount (rent, security deposit & claimer bounty) is returned to initializer
         escrow_state.close(initializer).unwrap();

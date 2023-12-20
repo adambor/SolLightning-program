@@ -10,9 +10,10 @@ use crate::enums::*;
 use crate::errors::*;
 use crate::state::*;
 use crate::events::*;
+use crate::structs::*;
 
 //Processes & checks the claim data - uses data from data_account if provided, otherwise uses data passed in secret param, emits ClaimEvent, throws on failure
-pub fn process_claim(signer: &Signer, escrow_state: &Account<EscrowState>, ix_sysvar: &AccountInfo, data_account: &mut Option<UncheckedAccount>, secret: &[u8]) -> Result<()> {
+pub fn process_claim(signer: &Signer, swap_data: &SwapData, ix_sysvar: &AccountInfo, data_account: &mut Option<UncheckedAccount>, secret: &[u8]) -> Result<()> {
 
     let event_secret = match data_account {
         Some(data_acc) => {
@@ -29,7 +30,7 @@ pub fn process_claim(signer: &Signer, escrow_state: &Account<EscrowState>, ix_sy
                     SwapErrorCode::InvalidUserData
                 );
         
-                event_secret = check_claim(escrow_state, ix_sysvar, &acc_data[32..])?;
+                event_secret = check_claim(swap_data, ix_sysvar, &acc_data[32..])?;
             }
             
             let mut acc_balance = data_acc.try_borrow_mut_lamports()?;
@@ -41,33 +42,33 @@ pub fn process_claim(signer: &Signer, escrow_state: &Account<EscrowState>, ix_sy
 
             event_secret
         },
-        None => check_claim(escrow_state, ix_sysvar, secret)?
+        None => check_claim(swap_data, ix_sysvar, secret)?
     };
 
     emit!(ClaimEvent {
-        hash: escrow_state.hash,
+        hash: swap_data.hash,
         secret: event_secret,
-        sequence: escrow_state.sequence
+        sequence: swap_data.sequence
     });
     
     Ok(())
 }
 
 //Verifies if the claim is claimable by the claimer, provided the secret data (tx data or preimage for HTLC), returns the preimage (for HTLC, or TXHASH for PTLC)
-pub fn check_claim(account: &Account<EscrowState>, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<[u8; 32]> {
-    match account.kind {
-        SwapType::Htlc => check_claim_htlc(account, secret),
-        SwapType::Chain | SwapType::ChainNonced | SwapType::ChainTxhash => check_claim_chain(account, ix_sysvar, secret)
+pub fn check_claim(swap_data: &SwapData, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<[u8; 32]> {
+    match swap_data.kind {
+        SwapType::Htlc => check_claim_htlc(swap_data, secret),
+        SwapType::Chain | SwapType::ChainNonced | SwapType::ChainTxhash => check_claim_chain(swap_data, ix_sysvar, secret)
     }
 }
 
 //Verifies claim of HTLC by checking that a secret (the first 32 bytes of the secret) properly hash to escrow state hash, returns the 32 byte secret
-pub fn check_claim_htlc(account: &Account<EscrowState>, secret: &[u8]) -> Result<[u8; 32]> {
+pub fn check_claim_htlc(swap_data: &SwapData, secret: &[u8]) -> Result<[u8; 32]> {
     //Check HTLC hash for lightning
     let hash_result = hash::hash(&secret[..32]).to_bytes();
 
     require!(
-        hash_result == account.hash,
+        hash_result == swap_data.hash,
         SwapErrorCode::InvalidSecret
     );
 
@@ -75,15 +76,15 @@ pub fn check_claim_htlc(account: &Account<EscrowState>, secret: &[u8]) -> Result
 }
 
 //Verifies claim of PTLC by verifying the tx_hash with btc relay program, returns the transaction hash
-pub fn check_claim_chain(account: &Account<EscrowState>, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<[u8; 32]> {
+pub fn check_claim_chain(swap_data: &SwapData, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<[u8; 32]> {
     //txhash to be checked with bitcoin relay program
-    let tx_hash: [u8; 32] = match account.kind {
-        SwapType::ChainTxhash => account.hash,
+    let tx_hash: [u8; 32] = match swap_data.kind {
+        SwapType::ChainTxhash => swap_data.hash,
         SwapType::Chain | SwapType::ChainNonced => {
             //Extract output index from secret
             let output_index = u32::from_le_bytes(secret[0..4].try_into().unwrap());
             //Verify transaction, starting from byte 4 of the secret
-            let opt_tx = crate::utils::btctx::verify_transaction(&secret[4..], output_index.into(), account.kind==SwapType::ChainNonced);
+            let opt_tx = crate::utils::btctx::verify_transaction(&secret[4..], output_index.into(), swap_data.kind==SwapType::ChainNonced);
 
             //Has to be properly parsed
             require!(
@@ -103,25 +104,25 @@ pub fn check_claim_chain(account: &Account<EscrowState>, ix_sysvar: &AccountInfo
 
             //Extract data from the vout
             let mut output_data = Vec::with_capacity(8+8+tx_output.script.len());
-            output_data.extend_from_slice(&u64::to_le_bytes(account.nonce));
+            output_data.extend_from_slice(&u64::to_le_bytes(swap_data.nonce));
             output_data.extend_from_slice(&u64::to_le_bytes(tx_output.value));
             output_data.extend_from_slice(tx_output.script);
 
             //Hash the nonce, output value and output script
             let hash_result = hash::hash(&output_data).to_bytes();
             require!(
-                hash_result == account.hash,
+                hash_result == swap_data.hash,
                 SwapErrorCode::InvalidSecret
             );
 
-            if account.kind==SwapType::ChainNonced {
+            if swap_data.kind==SwapType::ChainNonced {
                 //For the transaction nonce, we utilize nSequence and timelock,
                 // this uniquelly identifies the transaction output, even if it's an address re-use
                 let n_sequence_u64: u64 = (tx.n_sequence as u64) & 0x00FFFFFF;
                 let locktime_u64: u64 = (tx.locktime as u64)-500000000;
                 let tx_nonce: u64 = (locktime_u64<<24) | n_sequence_u64;
                 require!(
-                    tx_nonce == account.nonce,
+                    tx_nonce == swap_data.nonce,
                     SwapErrorCode::InvalidNonce
                 );
             }
@@ -136,7 +137,7 @@ pub fn check_claim_chain(account: &Account<EscrowState>, ix_sysvar: &AccountInfo
     let ix: Instruction = load_instruction_at_checked(0, ix_sysvar)?;
     
     //Throws on failure
-    crate::utils::btcrelay::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
+    crate::utils::btcrelay::verify_tx_ix(&ix, &tx_hash, swap_data.confirmations as u32)?;
 
     Ok(tx_hash)
 }

@@ -11,6 +11,7 @@ use crate::enums::*;
 use crate::errors::*;
 use crate::state::*;
 use crate::events::*;
+use crate::structs::*;
 
 fn now_ts() -> Result<u64> {
     Ok(clock::Clock::get().unwrap().unix_timestamp.try_into().unwrap())
@@ -24,16 +25,10 @@ pub fn process_initialize(
     claimer_token_account: &Option<Account<TokenAccount>>,
     mint: &Account<Mint>,
 
-    initializer_amount: u64,
-    expiry: u64,
-    hash: [u8; 32],
-    kind: SwapType,
-    confirmations: u16,
-    escrow_nonce: u64,
-    auth_expiry: u64,
-    pay_out: bool,
+    swap_data: &SwapData,
+    
     txo_hash: [u8; 32], //Only for on-chain,
-    sequence: u64
+    auth_expiry: u64
 ) -> Result<()> {
     require!(
         auth_expiry > now_ts()?,
@@ -41,43 +36,36 @@ pub fn process_initialize(
     );
 
     require!(
-        confirmations <= crate::MAX_CONFIRMATIONS,
+        swap_data.confirmations <= crate::MAX_CONFIRMATIONS,
         SwapErrorCode::TooManyConfirmations
     );
 
-    escrow_state.kind = kind;
-
-    if kind==SwapType::ChainNonced {
-        escrow_state.nonce = escrow_nonce;
+    if swap_data.kind != SwapType::ChainNonced {
+        require!(
+            swap_data.nonce == 0,
+            SwapErrorCode::InvalidSwapDataNonce
+        );
     }
 
-    escrow_state.confirmations = confirmations;
-    escrow_state.pay_in = true;
-    escrow_state.pay_out = pay_out;
+    escrow_state.data = swap_data.clone();
 
     escrow_state.offerer = *offerer.key;
     escrow_state.claimer = *claimer.to_account_info().key;
 
-    if pay_out {
+    if swap_data.pay_out {
         let claimer_ata = claimer_token_account.as_ref().expect("Claimer ATA not provided for pay_out=true swap");
         escrow_state.claimer_token_account = *claimer_ata.to_account_info().key;
     }
-
-    escrow_state.initializer_amount = initializer_amount;
     escrow_state.mint = *mint.to_account_info().key;
-
-    escrow_state.expiry = expiry;
-    escrow_state.hash = hash;
-    escrow_state.sequence = sequence;
 
     escrow_state.bump = bump;
 
     emit!(InitializeEvent {
-        hash: escrow_state.hash,
+        hash: swap_data.hash,
         txo_hash,
-        nonce: escrow_state.nonce,
-        kind,
-        sequence
+        nonce: swap_data.nonce,
+        kind: swap_data.kind,
+        sequence: swap_data.sequence
     });
 
     Ok(())

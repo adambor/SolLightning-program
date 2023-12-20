@@ -225,8 +225,8 @@ pub struct Refund<'info> {
         mut,
         constraint = escrow_state.offerer == *offerer.key,
         constraint = escrow_state.claimer == *claimer.key,
-        constraint = !escrow_state.pay_in,
-        constraint = escrow_state.pay_out || user_data_claimer.is_some()
+        constraint = !escrow_state.data.pay_in,
+        constraint = escrow_state.data.pay_out || user_data_claimer.is_some()
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
@@ -273,9 +273,9 @@ pub struct RefundPayIn<'info> {
         mut,
         constraint = escrow_state.offerer == *offerer.key,
         constraint = escrow_state.claimer == *claimer.key,
-        constraint = escrow_state.pay_in,
+        constraint = escrow_state.data.pay_in,
         constraint = escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.to_account_info().key,
-        constraint = escrow_state.pay_out || user_data_claimer.is_some()
+        constraint = escrow_state.data.pay_out || user_data_claimer.is_some()
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
@@ -328,8 +328,8 @@ pub struct Claim<'info> {
 
     #[account(
         mut,
-        constraint = !escrow_state.pay_out,
-        constraint = if escrow_state.pay_in { escrow_state.offerer == *initializer.key } else { escrow_state.claimer == *initializer.key },
+        constraint = !escrow_state.data.pay_out,
+        constraint = if escrow_state.data.pay_in { escrow_state.offerer == *initializer.key } else { escrow_state.claimer == *initializer.key },
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
@@ -364,8 +364,8 @@ pub struct ClaimPayOut<'info> {
     #[account(
         mut,
         constraint = escrow_state.claimer_token_account == claimer_receive_token_account.key(),
-        constraint = escrow_state.pay_out,
-        constraint = if escrow_state.pay_in { escrow_state.offerer == *initializer.key } else { escrow_state.claimer == *initializer.key },
+        constraint = escrow_state.data.pay_out,
+        constraint = if escrow_state.data.pay_in { escrow_state.offerer == *initializer.key } else { escrow_state.claimer == *initializer.key },
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
