@@ -57,7 +57,7 @@ pub fn check_ed25519_data(data: &[u8], pubkey: &[u8], msg: &[u8]) -> Result<()> 
 
     let exp_public_key_offset:      u16 = 16; // 2*u8 + 7*u16
     let exp_signature_offset:       u16 = exp_public_key_offset + pubkey.len() as u16;
-    let exp_message_data_offset:    u16 = exp_signature_offset + 64 as u16;
+    let exp_message_data_offset:    u16 = exp_signature_offset + 64;
     let exp_num_signatures:          u8 = 1;
     let exp_message_data_size:      u16 = msg.len().try_into().unwrap();
 

@@ -140,7 +140,7 @@ pub mod swap_program {
             amount,
         )?;
         
-        ctx.accounts.user_data.bump = *ctx.bumps.get("user_data").unwrap();
+        ctx.accounts.user_data.bump = ctx.bumps.user_data;
         ctx.accounts.user_data.amount += amount;
 
         Ok(())
@@ -223,7 +223,7 @@ pub mod swap_program {
         ctx.accounts.escrow_state.hash = hash;
         ctx.accounts.escrow_state.sequence = sequence;
 
-        ctx.accounts.escrow_state.bump = *ctx.bumps.get("escrow_state").unwrap();
+        ctx.accounts.escrow_state.bump = ctx.bumps.escrow_state;
 
         token::transfer(
             ctx.accounts.get_transfer_to_pda_context(),
@@ -323,7 +323,7 @@ pub mod swap_program {
             ctx.accounts.escrow_state.claimer_token_account = *claimer_ata.to_account_info().key;
         }
         
-        ctx.accounts.escrow_state.bump = *ctx.bumps.get("escrow_state").unwrap();
+        ctx.accounts.escrow_state.bump = ctx.bumps.escrow_state;
 
         emit!(InitializeEvent {
             hash: ctx.accounts.escrow_state.hash,
