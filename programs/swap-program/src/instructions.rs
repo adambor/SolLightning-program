@@ -64,7 +64,7 @@ pub struct Withdraw<'info> {
     #[account(
         mut,
         seeds = [USER_DATA_SEED.as_ref(), initializer.to_account_info().key.as_ref(), mint.to_account_info().key.as_ref()],
-        bump,
+        bump = user_data.bump,
         constraint = user_data.amount >= amount
     )]
     pub user_data: Account<'info, UserAccount>,
@@ -146,7 +146,7 @@ pub struct InitializePayIn<'info> {
     ////////////////////////////////////////
     #[account(
         seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
-        bump
+        bump = user_data_claimer.bump
     )]
     pub user_data_claimer: Option<Account<'info, UserAccount>>,
 
@@ -170,7 +170,7 @@ pub struct Initialize<'info> {
     #[account(
         mut,
         seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), mint.to_account_info().key.as_ref()],
-        bump,
+        bump = user_data.bump,
         constraint = user_data.amount >= initializer_amount
     )]
     pub user_data: Account<'info, UserAccount>,
@@ -196,7 +196,7 @@ pub struct Initialize<'info> {
     ////////////////////////////////////////
     #[account(
         seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
-        bump
+        bump = user_data_claimer.bump
     )]
     pub user_data_claimer: Option<Account<'info, UserAccount>>,
     
@@ -259,7 +259,7 @@ pub struct Refund<'info> {
     #[account(
         mut,
         seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), escrow_state.mint.as_ref()],
-        bump,
+        bump = user_data.bump,
     )]
     pub user_data: Option<Account<'info, UserAccount>>,
 
@@ -323,7 +323,7 @@ pub struct Claim<'info> {
     #[account(
         mut,
         seeds = [USER_DATA_SEED.as_ref(), escrow_state.claimer.key().as_ref(), escrow_state.mint.as_ref()],
-        bump
+        bump = user_data.bump
     )]
     pub user_data: Option<Box<Account<'info, UserAccount>>>,
 

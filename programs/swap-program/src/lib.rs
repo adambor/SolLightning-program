@@ -141,6 +141,7 @@ pub mod swap_program {
             amount,
         )?;
         
+        ctx.accounts.user_data.bump = *ctx.bumps.get("user_data").unwrap();
         ctx.accounts.user_data.amount += amount;
 
         Ok(())
@@ -222,6 +223,8 @@ pub mod swap_program {
         ctx.accounts.escrow_state.expiry = expiry;
         ctx.accounts.escrow_state.hash = hash;
         ctx.accounts.escrow_state.sequence = sequence;
+
+        ctx.accounts.escrow_state.bump = *ctx.bumps.get("escrow_state").unwrap();
 
         token::transfer(
             ctx.accounts.into_transfer_to_pda_context(),
@@ -320,6 +323,8 @@ pub mod swap_program {
             let claimer_ata = ctx.accounts.claimer_token_account.as_ref().expect("Claimer ATA not provided for pay_out=true swap");
             ctx.accounts.escrow_state.claimer_token_account = *claimer_ata.to_account_info().key;
         }
+        
+        ctx.accounts.escrow_state.bump = *ctx.bumps.get("escrow_state").unwrap();
 
         emit!(InitializeEvent {
             hash: ctx.accounts.escrow_state.hash,
