@@ -5,7 +5,6 @@ use anchor_lang::{
 use anchor_lang::prelude::*;
 use crate::SwapErrorCode;
 
-
 //Verify Ed25519Program instruction fields,
 // returns 0 success, positive integer i ncase of failure
 pub fn verify_ed25519_ix(ix: &Instruction, pubkey: &[u8], msg: &[u8]) -> Result<()> {

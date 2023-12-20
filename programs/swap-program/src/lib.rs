@@ -19,7 +19,7 @@ use events::*;
 use instructions::*;
 
 mod enums;
-mod utils;
+mod signatureutils;
 mod txutils;
 mod btcrelayutils;
 mod errors;
@@ -96,7 +96,7 @@ pub mod refund_utils {
 
         //Check that the ed25519 verify instruction verified the signature of the hash of the "refund" message
         //Throws on verify fail
-        utils::verify_ed25519_ix(&ix, &escrow_state.claimer.to_bytes(), &hash::hash(&msg).to_bytes())?;
+        signatureutils::verify_ed25519_ix(&ix, &escrow_state.claimer.to_bytes(), &hash::hash(&msg).to_bytes())?;
 
         Ok(())
     }
