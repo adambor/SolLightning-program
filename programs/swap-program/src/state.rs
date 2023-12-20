@@ -80,7 +80,7 @@ pub struct UserAccount {
 
 impl EscrowState {
     pub fn space() -> usize {
-        8 + 1 + 2 + 8 + 192 + 8 + 8 + 1 + 1 + 8 + 8
+        8 + 1 + 2 + 8 + 192 + 8 + 8 + 1 + 1 + 8 + 8 + 8
     }
 }
 
