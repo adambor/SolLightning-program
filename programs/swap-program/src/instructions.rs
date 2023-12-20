@@ -5,7 +5,6 @@ use crate::USER_DATA_SEED;
 #[derive(Accounts)]
 #[instruction(amount: u64)]
 pub struct Deposit<'info> {
-    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub initializer: Signer<'info>,
 
@@ -37,7 +36,7 @@ pub struct Deposit<'info> {
     )]
     pub vault: Account<'info, TokenAccount>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account 
+    /// CHECK: This account is not being read from, it is only an authority for the contract token vaults
     #[account(
         seeds = [b"authority".as_ref()],
         bump
@@ -46,16 +45,13 @@ pub struct Deposit<'info> {
     
     //Required data
     pub mint: Account<'info, Mint>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
     pub system_program: Program<'info, System>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: Program<'info, Token>
 }
 
 #[derive(Accounts)]
 #[instruction(amount: u64)]
 pub struct Withdraw<'info> {
-    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub initializer: Signer<'info>,
 
@@ -82,7 +78,7 @@ pub struct Withdraw<'info> {
     )]
     pub vault: Account<'info, TokenAccount>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account
+    /// CHECK: This account is not being read from, it is only an authority for the contract token vaults
     #[account(
         seeds = [b"authority".as_ref()],
         bump
@@ -91,18 +87,14 @@ pub struct Withdraw<'info> {
 
     //Required data
     pub mint: Account<'info, Mint>,
-    
-    /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: Program<'info, Token>
 }
 
 #[derive(Accounts)]
 #[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
 pub struct InitializePayIn<'info> {
-    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub offerer: Signer<'info>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
     pub claimer: Signer<'info>,
 
     //Account of the token for initializer
@@ -136,7 +128,7 @@ pub struct InitializePayIn<'info> {
     )]
     pub vault: Account<'info, TokenAccount>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account
+    /// CHECK: This account is not being read from, it is only an authority for the contract token vaults
     #[account(
         seeds = [b"authority".as_ref()],
         bump
@@ -145,9 +137,7 @@ pub struct InitializePayIn<'info> {
 
     //Required data
     pub mint: Account<'info, Mint>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
     pub system_program: Program<'info, System>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: Program<'info, Token>,
     
     ////////////////////////////////////////
@@ -171,10 +161,8 @@ pub struct InitializePayIn<'info> {
 #[derive(Accounts)]
 #[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
 pub struct Initialize<'info> {
-    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub claimer: Signer<'info>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
     pub offerer: Signer<'info>,
 
     //Account of the token for initializer
@@ -200,7 +188,6 @@ pub struct Initialize<'info> {
 
     //Required data
     pub mint: Account<'info, Mint>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
     pub system_program: Program<'info, System>,
 
     ////////////////////////////////////////
@@ -229,7 +216,7 @@ pub struct Refund<'info> {
     #[account(mut)]
     pub offerer: Signer<'info>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account
+    /// CHECK: We are only transfering lamports to this account, we are not reading or writing data.
     #[account(mut)]
     pub claimer: AccountInfo<'info>,
 
@@ -252,7 +239,7 @@ pub struct Refund<'info> {
     )]
     pub vault: Option<Account<'info, TokenAccount>>,
     
-    /// CHECK: This is not dangerous because we don't read or write from this account
+    /// CHECK: This account is not being read from, it is only an authority for the contract token vaults
     #[account(
         seeds = [b"authority".as_ref()],
         bump
@@ -261,8 +248,7 @@ pub struct Refund<'info> {
     
     #[account(mut)]
     pub initializer_deposit_token_account: Option<Account<'info, TokenAccount>>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
+    
     pub token_program: Option<Program<'info, Token>>,
 
     ////////////////////////////////////////
@@ -279,7 +265,7 @@ pub struct Refund<'info> {
     ////////////////////////////////////////
     //For Refund with signature
     ////////////////////////////////////////
-    /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
+    /// CHECK: We are not reading nor writing to this account, it is used to verify the previous IX in the transaction and its address is fixed to IX_ID
     #[account(address = IX_ID)]
     pub ix_sysvar: Option<AccountInfo<'info>>
 }
@@ -289,11 +275,10 @@ pub struct Claim<'info> {
     ///////////////////////////////////////////
     //Main data
     ///////////////////////////////////////////
-    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub signer: Signer<'info>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account
+    /// CHECK: We are only transfering lamports to this account, we are not reading or writing data.
     #[account(mut)]
     pub initializer: AccountInfo<'info>,
 
@@ -305,7 +290,7 @@ pub struct Claim<'info> {
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
-    /// CHECK: This is safe: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification/blob/master/programs/solana-ed25519-sig-verification/src/lib.rs
+    /// CHECK: We are not reading nor writing to this account, it is used to verify the previous IX in the transaction and its address is fixed to IX_ID
     #[account(address = IX_ID)]
     pub ix_sysvar: AccountInfo<'info>,
     
@@ -322,13 +307,12 @@ pub struct Claim<'info> {
     )]
     pub vault: Option<Box<Account<'info, TokenAccount>>>,
     
-    /// CHECK: This is not dangerous because we don't read or write from this account
+    /// CHECK: This account is not being read from, it is only an authority for the contract token vaults
     #[account(
         seeds = [b"authority".as_ref()],
         bump
     )]
     pub vault_authority: Option<AccountInfo<'info>>,
-    /// CHECK: This is not dangerous because we don't read or write from this account
     pub token_program: Option<Program<'info, Token>>,
 
     ///////////////////////////////////////////
@@ -352,36 +336,32 @@ pub struct Claim<'info> {
 
 #[derive(Accounts)]
 pub struct InitData<'info> {
-    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub signer: Signer<'info>,
 
     //Data storage account
-    /// CHECK: We will handle this ourselves
     #[account(mut)]
     pub data: Signer<'info>
 }
 
 #[derive(Accounts)]
 pub struct WriteDataAlt<'info> {
-    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub signer: Signer<'info>,
 
     //Data storage account
-    /// CHECK: We will handle this ourselves
+    /// CHECK: This is checked in the instruction logic, the signer key has to be the first 32 bytes of the account data
     #[account(mut)]
     pub data: UncheckedAccount<'info>
 }
 
 #[derive(Accounts)]
 pub struct CloseDataAlt<'info> {
-    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub signer: Signer<'info>,
 
     //Data storage account
-    /// CHECK: We will handle this ourselves
+    /// CHECK: This is checked in the instruction logic, the signer key has to be the first 32 bytes of the account data
     #[account(mut)]
     pub data: UncheckedAccount<'info>
 }
