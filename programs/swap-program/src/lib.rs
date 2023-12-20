@@ -45,13 +45,6 @@ pub mod verification_utils {
 
     //Verifies if the claim is claimable by the claimer, provided the secret
     pub fn check_claim(account: &Box<Account<EscrowState>>, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<()> {
-        // let current_timestamp = now_ts()?;
-        //
-        // require!(
-        //     account.expiry >= current_timestamp,
-        //     SwapErrorCode::AlreadyExpired
-        // );
-
         //Check HTLC hash for lightning
         if account.kind==KIND_LN {
             let hash_result = hash::hash(&secret).to_bytes();
@@ -473,33 +466,6 @@ pub mod swap_program {
 
         Ok(())
     }
-
-    //Refund back to payer
-    // pub fn claimer_refund_payer(ctx: Context<RefundPayer>) -> Result<()> {
-    //     let (_vault_authority, vault_authority_bump) =
-    //         Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-    //     let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
-
-    //     token::transfer(
-    //         ctx.accounts
-    //             .into_transfer_to_initializer_context()
-    //             .with_signer(&[&authority_seeds[..]]),
-    //         ctx.accounts.escrow_state.initializer_amount,
-    //     )?;
-
-    //     emit!(RefundEvent {
-    //         hash: ctx.accounts.escrow_state.hash
-    //     });
-    //     //msg!("REFUND Hash: {}", hex::encode(ctx.accounts.escrow_state.hash));
-
-    //     // token::close_account(
-    //     //     ctx.accounts
-    //     //         .into_close_context()
-    //     //         .with_signer(&[&authority_seeds[..]]),
-    //     // )?;
-
-    //     Ok(())
-    // }
 
     //Claim the swap using the "secret", or data in the provided "data" account
     pub fn claimer_claim(ctx: Context<Claim>, secret: Vec<u8>) -> Result<()> {
