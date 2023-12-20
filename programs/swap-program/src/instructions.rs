@@ -215,6 +215,7 @@ pub struct Refund<'info> {
     #[account(
         mut,
         constraint = escrow_state.offerer == *offerer.key,
+        constraint = escrow_state.claimer == *claimer.key,
         constraint = if escrow_state.pay_in { vault.is_some() && vault_authority.is_some() && initializer_deposit_token_account.is_some() && token_program.is_some() } else { user_data.is_some() },
         constraint = initializer_deposit_token_account.is_none() || escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.as_ref().unwrap().to_account_info().key
     )]
