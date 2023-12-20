@@ -86,6 +86,6 @@ impl EscrowState {
 
 impl UserAccount {
     pub fn space() -> usize {
-        8 + 8 + 8 + 8 + (8*6*4)
+        8 + 8 + 8 + (8*6*4)
     }
 }
