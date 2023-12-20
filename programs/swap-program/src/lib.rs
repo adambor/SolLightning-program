@@ -19,13 +19,12 @@ use events::*;
 use instructions::*;
 
 mod enums;
-mod signatureutils;
-mod txutils;
-mod btcrelayutils;
 mod errors;
 mod state;
 mod events;
 mod instructions;
+
+mod utils;
 
 
 declare_id!("8vowxbBrrfDU6Dz1bBCL4W9K5pTwsBLVAd8kJPsgLiLR");
@@ -96,7 +95,7 @@ pub mod refund_utils {
 
         //Check that the ed25519 verify instruction verified the signature of the hash of the "refund" message
         //Throws on verify fail
-        signatureutils::verify_ed25519_ix(&ix, &escrow_state.claimer.to_bytes(), &hash::hash(&msg).to_bytes())?;
+        utils::signature::verify_ed25519_ix(&ix, &escrow_state.claimer.to_bytes(), &hash::hash(&msg).to_bytes())?;
 
         Ok(())
     }
@@ -113,7 +112,7 @@ pub mod refund_utils {
             let ix: Instruction = load_instruction_at_checked(0, ix_sysvar.as_ref().unwrap())?;
 
             //Throws on failure
-            btcrelayutils::verify_blockheight_ix(&ix, escrow_state.expiry.try_into().unwrap(), 2)?;
+            utils::btcrelay::verify_blockheight_ix(&ix, escrow_state.expiry.try_into().unwrap(), 2)?;
         } else {
             //Expiry is expressed as UNIX timestamp in seconds
             require!(
@@ -230,7 +229,7 @@ pub mod claim_utils {
                 //Extract output index from secret
                 let output_index = u32::from_le_bytes(secret[0..4].try_into().unwrap());
                 //Verify transaction, starting from byte 4 of the secret
-                let opt_tx = txutils::verify_transaction(&secret[4..], output_index.into(), account.kind==SwapType::ChainNonced);
+                let opt_tx = utils::btctx::verify_transaction(&secret[4..], output_index.into(), account.kind==SwapType::ChainNonced);
     
                 //Has to be properly parsed
                 require!(
@@ -283,7 +282,7 @@ pub mod claim_utils {
         let ix: Instruction = load_instruction_at_checked(0, ix_sysvar)?;
         
         //Throws on failure
-        btcrelayutils::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
+        utils::btcrelay::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
 
         Ok(tx_hash)
     }
