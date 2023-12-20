@@ -21,6 +21,7 @@ use instructions::*;
 mod enums;
 mod utils;
 mod txutils;
+mod btcrelayutils;
 mod errors;
 mod state;
 mod events;
@@ -112,7 +113,7 @@ pub mod refund_utils {
             let ix: Instruction = load_instruction_at_checked(0, ix_sysvar.as_ref().unwrap())?;
 
             //Throws on failure
-            txutils::verify_blockheight_ix(&ix, escrow_state.expiry.try_into().unwrap(), 2)?;
+            btcrelayutils::verify_blockheight_ix(&ix, escrow_state.expiry.try_into().unwrap(), 2)?;
         } else {
             //Expiry is expressed as UNIX timestamp in seconds
             require!(
@@ -282,7 +283,7 @@ pub mod claim_utils {
         let ix: Instruction = load_instruction_at_checked(0, ix_sysvar)?;
         
         //Throws on failure
-        txutils::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
+        btcrelayutils::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
 
         Ok(tx_hash)
     }
