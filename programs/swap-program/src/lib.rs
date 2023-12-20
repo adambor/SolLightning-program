@@ -186,6 +186,9 @@ pub mod swap_program {
             let cpi_ctx = CpiContext::new(cpi_program, transfer_lamports_instruction);
             system_program::transfer(cpi_ctx, difference)?;
         }
+        
+        ctx.accounts.escrow_state.security_deposit = security_deposit;
+        ctx.accounts.escrow_state.claimer_bounty = claimer_bounty;
 
         ctx.accounts.user_data.amount -= initializer_amount;
 
