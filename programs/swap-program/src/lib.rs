@@ -449,10 +449,10 @@ pub mod swap_program {
             let mut user_data = UserAccount::try_deserialize(&mut &**data)?;
 
             if auth_expiry>0 {
-                user_data.coop_close_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+                user_data.coop_close_volume[usize::from(ctx.accounts.escrow_state.kind)] = user_data.coop_close_volume[usize::from(ctx.accounts.escrow_state.kind)].saturating_add(ctx.accounts.escrow_state.initializer_amount);
                 user_data.coop_close_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
             } else {
-                user_data.fail_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+                user_data.fail_volume[usize::from(ctx.accounts.escrow_state.kind)] = user_data.fail_volume[usize::from(ctx.accounts.escrow_state.kind)].saturating_add(ctx.accounts.escrow_state.initializer_amount);
                 user_data.fail_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
             }
 
@@ -575,7 +575,7 @@ pub mod swap_program {
             //Pay out to internal wallet
             let user_data = ctx.accounts.user_data.as_mut().unwrap();
             user_data.amount += ctx.accounts.escrow_state.initializer_amount;
-            user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] += ctx.accounts.escrow_state.initializer_amount;
+            user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)] = user_data.success_volume[usize::from(ctx.accounts.escrow_state.kind)].saturating_add(ctx.accounts.escrow_state.initializer_amount);
             user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
         }
 
