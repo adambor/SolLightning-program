@@ -2,6 +2,8 @@ use anchor_lang::{
     solana_program::instruction::Instruction,
     solana_program::ed25519_program::{ID as ED25519_ID}
 };
+use anchor_lang::prelude::*;
+use crate::SwapErrorCode;
 
 //Source: https://github.com/GuidoDipietro/solana-ed25519-secp256k1-sig-verification
 pub mod utils {
@@ -9,7 +11,7 @@ pub mod utils {
 
     //Verify Ed25519Program instruction fields,
     // returns 0 success, positive integer i ncase of failure
-    pub fn verify_ed25519_ix(ix: &Instruction, pubkey: &[u8], msg: &[u8]) -> u8 {
+    pub fn verify_ed25519_ix(ix: &Instruction, pubkey: &[u8], msg: &[u8]) -> Result<()> {
         // if  ix.program_id       != ED25519_ID                   ||  // The program id we expect
         //     ix.accounts.len()   != 0                            ||  // With no context accounts
         //     ix.data.len()       != (16 + 64 + 32 + msg.len())       // And data of this size
@@ -19,22 +21,22 @@ pub mod utils {
 
         if  ix.program_id       != ED25519_ID
         {
-            return 10;
+            return Err(anchor_lang::error!(SwapErrorCode::SignatureVerificationFailedInvalidProgram));
         }
         if  ix.accounts.len()   != 0
         {
-            return 11;
+            return Err(anchor_lang::error!(SwapErrorCode::SignatureVerificationFailedAccountsLength));
         }
         if  ix.data.len()       != (16 + 64 + 32 + msg.len())
         {
-            return 12;
+            return Err(anchor_lang::error!(SwapErrorCode::SignatureVerificationFailedDataLength));
         }
 
         return check_ed25519_data(&ix.data, pubkey, msg); // If that's not the case, check data
     }
 
     /// Verify serialized Ed25519Program instruction data
-    pub fn check_ed25519_data(data: &[u8], pubkey: &[u8], msg: &[u8]) -> u8 {
+    pub fn check_ed25519_data(data: &[u8], pubkey: &[u8], msg: &[u8]) -> Result<()> {
         // According to this layout used by the Ed25519Program
         // https://github.com/solana-labs/solana-web3.js/blob/master/src/ed25519-program.ts#L33
 
@@ -75,16 +77,16 @@ pub mod utils {
             message_data_size               != &exp_message_data_size.to_le_bytes()     ||
             message_instruction_index       != &u16::MAX.to_le_bytes()  
         {
-            return 2;
+            return Err(anchor_lang::error!(SwapErrorCode::SignatureVerificationFailedInvalidHeader));
         }
 
         // Arguments
         if  data_pubkey != pubkey   ||
             data_msg    != msg
         {
-            return 3;
+            return Err(anchor_lang::error!(SwapErrorCode::SignatureVerificationFailedInvalidData));
         }
 
-        return 0;
+        Ok(())
     }
 }

@@ -128,24 +128,9 @@ pub mod verification_utils {
             //Check that there was a previous instruction verifying
             // the transaction ID against btcrelay program
             let ix: Instruction = load_instruction_at_checked(0, ix_sysvar)?;
-            let verification_result = txutils::txutils::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
-    
-            require!(
-                verification_result != 10,
-                SwapErrorCode::InvalidTxVerifyProgramId
-            );
-            require!(
-                verification_result != 1,
-                SwapErrorCode::InvalidTxVerifyIx
-            );
-            require!(
-                verification_result != 2,
-                SwapErrorCode::InvalidTxVerifyTxid
-            );
-            require!(
-                verification_result != 3,
-                SwapErrorCode::InvalidTxVerifyConfirmations
-            );
+            
+            //Throws on failure
+            txutils::txutils::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
         }
 
         Ok(())
@@ -384,12 +369,9 @@ pub mod swap_program {
             msg.extend_from_slice(&auth_expiry.to_le_bytes());
     
             //Check that the ed25519 verify instruction verified the signature of the hash of the "refund" message
-            let result = verify_ed25519_ix(&ix, &ctx.accounts.escrow_state.claimer.to_bytes(), &hash::hash(&msg).to_bytes());
+            //Throws on verify fail
+            verify_ed25519_ix(&ix, &ctx.accounts.escrow_state.claimer.to_bytes(), &hash::hash(&msg).to_bytes())?;
     
-            require!(
-                result == 0,
-                SwapErrorCode::SignatureVerificationFailed
-            );
         } else {
             //Check if the contract is expired yet
             if ctx.accounts.escrow_state.expiry < BLOCKHEIGHT_EXPIRY_THRESHOLD {
@@ -399,24 +381,9 @@ pub mod swap_program {
                 // blockheight of btcrelay program
                 // btc_relay.blockheight > ctx.accounts.escrow_state.expiry
                 let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar.as_ref().unwrap())?;
-                let verification_result = txutils::txutils::verify_blockheight_ix(&ix, ctx.accounts.escrow_state.expiry.try_into().unwrap(), 2)?;
 
-                require!(
-                    verification_result != 10,
-                    SwapErrorCode::InvalidBlockheightVerifyProgramId
-                );
-                require!(
-                    verification_result != 1,
-                    SwapErrorCode::InvalidBlockheightVerifyIx
-                );
-                require!(
-                    verification_result != 2,
-                    SwapErrorCode::InvalidBlockheightVerifyHeight
-                );
-                require!(
-                    verification_result != 3,
-                    SwapErrorCode::InvalidBlockheightVerifyOperation
-                );
+                //Throws on failure
+                txutils::txutils::verify_blockheight_ix(&ix, ctx.accounts.escrow_state.expiry.try_into().unwrap(), 2)?;
             } else {
                 //Expiry is expressed as UNIX timestamp in seconds
                 require!(
