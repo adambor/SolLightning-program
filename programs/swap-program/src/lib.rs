@@ -367,7 +367,7 @@ pub mod swap_program {
             let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar.as_ref().unwrap())?;
 
             //Construct "refund" message
-            let mut msg = Vec::with_capacity(6+8+8+32+8);
+            let mut msg = Vec::with_capacity(6+8+8+8+32+8);
             msg.extend_from_slice(b"refund");
             msg.extend_from_slice(&ctx.accounts.escrow_state.initializer_amount.to_le_bytes());
             msg.extend_from_slice(&ctx.accounts.escrow_state.expiry.to_le_bytes());
