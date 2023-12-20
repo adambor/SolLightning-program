@@ -97,7 +97,7 @@ pub struct Withdraw<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool, txo_hash: [u8; 32])]
+#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
 pub struct InitializePayIn<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
@@ -169,7 +169,7 @@ pub struct InitializePayIn<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool, txo_hash: [u8; 32])]
+#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: u8, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
 pub struct Initialize<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
