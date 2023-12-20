@@ -36,6 +36,10 @@ static AUTHORITY_SEED: &[u8] = b"authority";
 static USER_DATA_SEED: &[u8] = b"uservault";
 static BLOCKHEIGHT_EXPIRY_THRESHOLD: u64 = 1000000000; //If expiry is < BLOCKHEIGHT_EXPIRY_THRESHOLD it is considered as expressed in blockheight instead of timestamp
 
+static BTCRELAY_PRUNING_FACTOR: u16 = 250;
+static BTCRELAY_SAFETY_BUFFER: u16 = 50;
+static MAX_CONFIRMATIONS: u16 = BTCRELAY_PRUNING_FACTOR - BTCRELAY_SAFETY_BUFFER;
+
 pub mod verification_utils {
     use super::*;
 
@@ -214,6 +218,11 @@ pub mod swap_program {
             SwapErrorCode::AlreadyExpired
         );
 
+        require!(
+            confirmations <= MAX_CONFIRMATIONS,
+            SwapErrorCode::TooManyConfirmations
+        );
+
         ctx.accounts.escrow_state.kind = kind;
 
         if kind==KIND_CHAIN_NONCED {
@@ -286,6 +295,11 @@ pub mod swap_program {
         require!(
             auth_expiry > now_ts()?,
             SwapErrorCode::AlreadyExpired
+        );
+
+        require!(
+            confirmations <= MAX_CONFIRMATIONS,
+            SwapErrorCode::TooManyConfirmations
         );
 
         //We can calculate only the maximum of the two, not a sum,

@@ -14,6 +14,8 @@ pub enum SwapErrorCode {
     SignatureVerificationFailed,
     #[msg("Unknown type of the contract.")]
     KindUnknown,
+    #[msg("Too many confirmations required.")]
+    TooManyConfirmations,
     #[msg("Invalid program id for transaction verification.")]
     InvalidTxVerifyProgramId,
     #[msg("Invalid instruction for transaction verification.")]
