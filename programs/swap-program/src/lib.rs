@@ -235,7 +235,11 @@ pub mod swap_program {
 
         ctx.accounts.escrow_state.offerer = *ctx.accounts.offerer.key;
         ctx.accounts.escrow_state.claimer = *ctx.accounts.claimer.to_account_info().key;
-        ctx.accounts.escrow_state.claimer_token_account = *ctx.accounts.claimer_token_account.to_account_info().key;
+
+        if pay_out {
+            let claimer_ata = ctx.accounts.claimer_token_account.as_ref().expect("Claimer ATA not provided for pay_out=true swap");
+            ctx.accounts.escrow_state.claimer_token_account = *claimer_ata.to_account_info().key;
+        }
 
         ctx.accounts.escrow_state.initializer_deposit_token_account = *ctx
             .accounts
@@ -334,7 +338,6 @@ pub mod swap_program {
 
         ctx.accounts.escrow_state.offerer = *ctx.accounts.offerer.to_account_info().key;
         ctx.accounts.escrow_state.claimer = *ctx.accounts.claimer.to_account_info().key;
-        ctx.accounts.escrow_state.claimer_token_account = *ctx.accounts.claimer_token_account.to_account_info().key;
 
         ctx.accounts.escrow_state.initializer_amount = initializer_amount;
         ctx.accounts.escrow_state.mint = *ctx.accounts.mint.to_account_info().key;
@@ -348,6 +351,11 @@ pub mod swap_program {
 
         ctx.accounts.user_data.amount -= initializer_amount;
         
+        if pay_out {
+            let claimer_ata = ctx.accounts.claimer_token_account.as_ref().expect("Claimer ATA not provided for pay_out=true swap");
+            ctx.accounts.escrow_state.claimer_token_account = *claimer_ata.to_account_info().key;
+        }
+
         emit!(InitializeEvent {
             hash: ctx.accounts.escrow_state.hash,
             txo_hash: txo_hash,

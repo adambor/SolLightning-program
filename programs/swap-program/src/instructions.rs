@@ -115,9 +115,6 @@ pub struct InitializePayIn<'info> {
     )]
     pub initializer_deposit_token_account: Account<'info, TokenAccount>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub claimer_token_account: AccountInfo<'info>,
-
     //Data storage account
     #[account(
         init,
@@ -125,8 +122,8 @@ pub struct InitializePayIn<'info> {
         bump,
         payer = offerer,
         space = EscrowState::space(),
-        //We need to verify existence of this PDA, so it can be properly provided in the possible refund()
-        constraint = pay_out || user_data_claimer.is_some()
+        //We need to verify existence of the recipient (either ATA or UserData PDA)
+        constraint = if pay_out { claimer_token_account.is_some() } else { user_data_claimer.is_some() }
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
@@ -163,7 +160,15 @@ pub struct InitializePayIn<'info> {
         seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
         bump
     )]
-    pub user_data_claimer: Option<Account<'info, UserAccount>>
+    pub user_data_claimer: Option<Account<'info, UserAccount>>,
+
+    ////////////////////////////////////////
+    //For pay out
+    ////////////////////////////////////////
+    #[account(
+        token::mint = mint
+    )]
+    pub claimer_token_account: Option<Account<'info, TokenAccount>>,
 }
 
 #[derive(Accounts)]
@@ -183,9 +188,6 @@ pub struct Initialize<'info> {
         constraint = user_data.amount >= initializer_amount
     )]
     pub user_data: Account<'info, UserAccount>,
-
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub claimer_token_account: AccountInfo<'info>,
     
     //Data storage account
     #[account(
@@ -194,8 +196,8 @@ pub struct Initialize<'info> {
         bump,
         payer = claimer,
         space = EscrowState::space(),
-        //We need to verify existence of this PDA, so it can be properly provided in the possible refund()
-        constraint = pay_out || user_data_claimer.is_some()
+        //We need to verify existence of the recipient (either ATA or UserData PDA)
+        constraint = if pay_out { claimer_token_account.is_some() } else { user_data_claimer.is_some() }
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
@@ -212,7 +214,15 @@ pub struct Initialize<'info> {
         seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
         bump
     )]
-    pub user_data_claimer: Option<Account<'info, UserAccount>>
+    pub user_data_claimer: Option<Account<'info, UserAccount>>,
+    
+    ////////////////////////////////////////
+    //For pay out
+    ////////////////////////////////////////
+    #[account(
+        token::mint = mint
+    )]
+    pub claimer_token_account: Option<Account<'info, TokenAccount>>
 }
 
 #[derive(Accounts)]
