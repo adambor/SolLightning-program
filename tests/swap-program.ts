@@ -2,7 +2,7 @@ import * as anchor from "@project-serum/anchor";
 import assert from "assert";
 import { Program } from "@project-serum/anchor";
 import { TOKEN_PROGRAM_ID, createMint, createAccount, mintTo, getAccount } from "@solana/spl-token";
-import { TestAnchor } from "../target/types/test_anchor";
+import { SwapProgram } from "../target/types/swap_program";
 import { randomBytes, createHash } from "crypto";
 import nacl from "tweetnacl";
 import { BN } from "bn.js";
@@ -10,7 +10,7 @@ const { SystemProgram } = anchor.web3;
 import { btcRelayIdl } from "./btc-relay-idl";
 
 
-const program = anchor.workspace.TestAnchor as Program<TestAnchor>;
+const program = anchor.workspace.SwapProgram as Program<SwapProgram>;
 const commitment: anchor.web3.Commitment = "confirmed";
 const provider = anchor.AnchorProvider.local();
 
@@ -77,7 +77,7 @@ describe("test-anchor", () => {
   // Configure the client to use the local cluster.
   //anchor.setProvider(provider);
 
-  const program = anchor.workspace.TestAnchor as Program<TestAnchor>;
+  const program = anchor.workspace.SwapProgram as Program<SwapProgram>;
   const publicKey = provider.wallet.publicKey;
 
   const payer = anchor.web3.Keypair.generate();

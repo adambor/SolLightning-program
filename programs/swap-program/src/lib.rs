@@ -149,7 +149,7 @@ pub mod verification_utils {
 }
 
 #[program]
-pub mod test_anchor {
+pub mod swap_program {
     use super::*;
 
     //Deposit to program balance
