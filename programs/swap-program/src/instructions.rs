@@ -225,44 +225,78 @@ pub struct Refund<'info> {
         mut,
         constraint = escrow_state.offerer == *offerer.key,
         constraint = escrow_state.claimer == *claimer.key,
-        constraint = if escrow_state.pay_in { vault.is_some() && vault_authority.is_some() && initializer_deposit_token_account.is_some() && token_program.is_some() } else { user_data.is_some() },
-        constraint = initializer_deposit_token_account.is_none() || escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.as_ref().unwrap().to_account_info().key,
+        constraint = !escrow_state.pay_in,
         constraint = escrow_state.pay_out || user_data_claimer.is_some()
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
-    ////////////////////////////////////////
-    //For Pay in
-    ////////////////////////////////////////
-    #[account(
-        mut,
-        seeds = [b"vault".as_ref(), escrow_state.mint.as_ref()],
-        bump,
-    )]
-    pub vault: Option<Account<'info, TokenAccount>>,
-    
-    /// CHECK: This account is not being read from, it is only an authority for the contract token vaults
-    #[account(
-        seeds = [b"authority".as_ref()],
-        bump
-    )]
-    pub vault_authority: Option<AccountInfo<'info>>,
-    
-    #[account(mut)]
-    pub initializer_deposit_token_account: Option<Account<'info, TokenAccount>>,
-    
-    pub token_program: Option<Program<'info, Token>>,
-
-    ////////////////////////////////////////
-    //For NOT Pay in
-    ////////////////////////////////////////
     //User data account of the offerer, funds are refunded there
     #[account(
         mut,
         seeds = [USER_DATA_SEED, offerer.key.as_ref(), escrow_state.mint.as_ref()],
         bump = user_data.bump,
     )]
-    pub user_data: Option<Account<'info, UserAccount>>,
+    pub user_data: Account<'info, UserAccount>,
+
+    ////////////////////////////////////////
+    //For NOT Pay out
+    ////////////////////////////////////////
+    //User data account of the claimer, used to lower his reputation
+    #[account(
+        mut,
+        seeds = [USER_DATA_SEED, claimer.key.as_ref(), escrow_state.mint.as_ref()],
+        bump = user_data_claimer.bump,
+    )]
+    pub user_data_claimer: Option<Account<'info, UserAccount>>,
+
+    ////////////////////////////////////////
+    //For Refund with signature
+    ////////////////////////////////////////
+    /// CHECK: We are not reading nor writing to this account, it is used to verify the previous IX in the transaction and its address is fixed to IX_ID
+    #[account(address = IX_ID)]
+    pub ix_sysvar: Option<AccountInfo<'info>>
+}
+
+#[derive(Accounts)]
+pub struct RefundPayIn<'info> {
+    ////////////////////////////////////////
+    //Main data
+    ////////////////////////////////////////
+    #[account(mut)]
+    pub offerer: Signer<'info>,
+
+    /// CHECK: We are only transfering lamports to this account, we are not reading or writing data.
+    #[account(mut)]
+    pub claimer: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        constraint = escrow_state.offerer == *offerer.key,
+        constraint = escrow_state.claimer == *claimer.key,
+        constraint = escrow_state.pay_in,
+        constraint = escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.to_account_info().key,
+        constraint = escrow_state.pay_out || user_data_claimer.is_some()
+    )]
+    pub escrow_state: Box<Account<'info, EscrowState>>,
+
+    #[account(
+        mut,
+        seeds = [b"vault".as_ref(), escrow_state.mint.as_ref()],
+        bump,
+    )]
+    pub vault: Account<'info, TokenAccount>,
+    
+    /// CHECK: This account is not being read from, it is only an authority for the contract token vaults
+    #[account(
+        seeds = [b"authority".as_ref()],
+        bump
+    )]
+    pub vault_authority: AccountInfo<'info>,
+    
+    #[account(mut)]
+    pub initializer_deposit_token_account: Account<'info, TokenAccount>,
+    
+    pub token_program: Program<'info, Token>,
 
     ////////////////////////////////////////
     //For NOT Pay out
@@ -285,9 +319,6 @@ pub struct Refund<'info> {
 
 #[derive(Accounts)]
 pub struct Claim<'info> {
-    ///////////////////////////////////////////
-    //Main data
-    ///////////////////////////////////////////
     #[account(mut)]
     pub signer: Signer<'info>,
 
@@ -297,8 +328,7 @@ pub struct Claim<'info> {
 
     #[account(
         mut,
-        constraint = claimer_receive_token_account.is_none() || escrow_state.claimer_token_account == claimer_receive_token_account.as_ref().unwrap().key(),
-        constraint = if escrow_state.pay_out { claimer_receive_token_account.is_some() && vault.is_some() && vault_authority.is_some() && token_program.is_some() } else { user_data.is_some() },
+        constraint = !escrow_state.pay_out,
         constraint = if escrow_state.pay_in { escrow_state.offerer == *initializer.key } else { escrow_state.claimer == *initializer.key },
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
@@ -307,37 +337,13 @@ pub struct Claim<'info> {
     #[account(address = IX_ID)]
     pub ix_sysvar: AccountInfo<'info>,
     
-    ///////////////////////////////////////////
-    //For Pay out
-    ///////////////////////////////////////////
-    #[account(mut)]
-    pub claimer_receive_token_account: Option<Box<Account<'info, TokenAccount>>>,
-
-    #[account(
-        mut,
-        seeds = [b"vault".as_ref(), escrow_state.mint.as_ref()],
-        bump,
-    )]
-    pub vault: Option<Box<Account<'info, TokenAccount>>>,
-    
-    /// CHECK: This account is not being read from, it is only an authority for the contract token vaults
-    #[account(
-        seeds = [b"authority".as_ref()],
-        bump
-    )]
-    pub vault_authority: Option<AccountInfo<'info>>,
-    pub token_program: Option<Program<'info, Token>>,
-
-    ///////////////////////////////////////////
-    //For NOT Pay out
-    ///////////////////////////////////////////
-    //Account of the token for initializer
+    //Account of the claimer to claim the tokens to
     #[account(
         mut,
         seeds = [USER_DATA_SEED, escrow_state.claimer.key().as_ref(), escrow_state.mint.as_ref()],
         bump = user_data.bump
     )]
-    pub user_data: Option<Box<Account<'info, UserAccount>>>,
+    pub user_data: Box<Account<'info, UserAccount>>,
 
     ///////////////////////////////////////////
     //For Using external data account
@@ -346,6 +352,51 @@ pub struct Claim<'info> {
     pub data: Option<UncheckedAccount<'info>>,
 }
 
+#[derive(Accounts)]
+pub struct ClaimPayOut<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    /// CHECK: We are only transfering lamports to this account, we are not reading or writing data.
+    #[account(mut)]
+    pub initializer: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        constraint = escrow_state.claimer_token_account == claimer_receive_token_account.key(),
+        constraint = escrow_state.pay_out,
+        constraint = if escrow_state.pay_in { escrow_state.offerer == *initializer.key } else { escrow_state.claimer == *initializer.key },
+    )]
+    pub escrow_state: Box<Account<'info, EscrowState>>,
+
+    /// CHECK: We are not reading nor writing to this account, it is used to verify the previous IX in the transaction and its address is fixed to IX_ID
+    #[account(address = IX_ID)]
+    pub ix_sysvar: AccountInfo<'info>,
+    
+    #[account(mut)]
+    pub claimer_receive_token_account: Box<Account<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        seeds = [b"vault".as_ref(), escrow_state.mint.as_ref()],
+        bump,
+    )]
+    pub vault: Box<Account<'info, TokenAccount>>,
+    
+    /// CHECK: This account is not being read from, it is only an authority for the contract token vaults
+    #[account(
+        seeds = [b"authority".as_ref()],
+        bump
+    )]
+    pub vault_authority: AccountInfo<'info>,
+    pub token_program: Program<'info, Token>,
+
+    ///////////////////////////////////////////
+    //For Using external data account
+    ///////////////////////////////////////////
+    #[account(mut)]
+    pub data: Option<UncheckedAccount<'info>>,
+}
 
 #[derive(Accounts)]
 pub struct InitData<'info> {
@@ -414,26 +465,26 @@ impl<'info> InitializePayIn<'info> {
     }
 }
 
-impl<'info> Refund<'info> {
+impl<'info> RefundPayIn<'info> {
     pub fn get_transfer_to_initializer_context(
         &self,
     ) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
-            from: self.vault.as_ref().unwrap().to_account_info(),
-            to: self.initializer_deposit_token_account.as_ref().unwrap().to_account_info(),
-            authority: self.vault_authority.as_ref().unwrap().clone(),
+            from: self.vault.to_account_info(),
+            to: self.initializer_deposit_token_account.to_account_info(),
+            authority: self.vault_authority.clone(),
         };
-        CpiContext::new(self.token_program.as_ref().unwrap().to_account_info(), cpi_accounts)
+        CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
     }
 }
 
-impl<'info> Claim<'info> {
+impl<'info> ClaimPayOut<'info> {
     pub fn get_transfer_to_claimer_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
-            from: self.vault.as_ref().unwrap().to_account_info(),
-            to: self.claimer_receive_token_account.as_ref().unwrap().to_account_info(),
-            authority: self.vault_authority.as_ref().unwrap().clone(),
+            from: self.vault.to_account_info(),
+            to: self.claimer_receive_token_account.to_account_info(),
+            authority: self.vault_authority.clone(),
         };
-        CpiContext::new(self.token_program.as_ref().unwrap().to_account_info(), cpi_accounts)
+        CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
     }
 }

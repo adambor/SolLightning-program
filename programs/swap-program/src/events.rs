@@ -19,6 +19,6 @@ pub struct RefundEvent {
 #[event]
 pub struct ClaimEvent {
     pub hash: [u8; 32],
-    pub secret: Vec<u8>,
+    pub secret: [u8; 32],
     pub sequence: u64
 }
