@@ -59,9 +59,6 @@ pub struct UserAccount {
     
     pub amount: u64, //Amount of tokens held by the user
 
-    //@deprecated, was used to prevent replay protection for initialization authorization
-    pub claim_nonce: u64,
-
     /////////////////////////
     // on-chain reputation //
     /////////////////////////
