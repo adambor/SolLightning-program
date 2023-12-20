@@ -19,7 +19,7 @@ pub struct Deposit<'info> {
     //Account holding the tokens
     #[account(
         init_if_needed,
-        seeds = [USER_DATA_SEED.as_ref(), initializer.to_account_info().key.as_ref(), mint.to_account_info().key.as_ref()],
+        seeds = [USER_DATA_SEED, initializer.to_account_info().key.as_ref(), mint.to_account_info().key.as_ref()],
         bump,
         payer = initializer,
         space = UserAccount::SPACE
@@ -63,7 +63,7 @@ pub struct Withdraw<'info> {
     //Account holding the tokens
     #[account(
         mut,
-        seeds = [USER_DATA_SEED.as_ref(), initializer.to_account_info().key.as_ref(), mint.to_account_info().key.as_ref()],
+        seeds = [USER_DATA_SEED, initializer.to_account_info().key.as_ref(), mint.to_account_info().key.as_ref()],
         bump = user_data.bump,
         constraint = user_data.amount >= amount
     )]
@@ -145,7 +145,7 @@ pub struct InitializePayIn<'info> {
     //For NOT Pay out
     ////////////////////////////////////////
     #[account(
-        seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
+        seeds = [USER_DATA_SEED, claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
         bump = user_data_claimer.bump
     )]
     pub user_data_claimer: Option<Account<'info, UserAccount>>,
@@ -169,7 +169,7 @@ pub struct Initialize<'info> {
     //Account of the token for initializer
     #[account(
         mut,
-        seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), mint.to_account_info().key.as_ref()],
+        seeds = [USER_DATA_SEED, offerer.key.as_ref(), mint.to_account_info().key.as_ref()],
         bump = user_data.bump,
         constraint = user_data.amount >= initializer_amount
     )]
@@ -195,7 +195,7 @@ pub struct Initialize<'info> {
     //For NOT Pay out
     ////////////////////////////////////////
     #[account(
-        seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
+        seeds = [USER_DATA_SEED, claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
         bump = user_data_claimer.bump
     )]
     pub user_data_claimer: Option<Account<'info, UserAccount>>,
@@ -259,7 +259,7 @@ pub struct Refund<'info> {
     //User data account of the offerer, funds are refunded there
     #[account(
         mut,
-        seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), escrow_state.mint.as_ref()],
+        seeds = [USER_DATA_SEED, offerer.key.as_ref(), escrow_state.mint.as_ref()],
         bump = user_data.bump,
     )]
     pub user_data: Option<Account<'info, UserAccount>>,
@@ -270,7 +270,7 @@ pub struct Refund<'info> {
     //User data account of the claimer, used to lower his reputation
     #[account(
         mut,
-        seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), escrow_state.mint.as_ref()],
+        seeds = [USER_DATA_SEED, claimer.key.as_ref(), escrow_state.mint.as_ref()],
         bump = user_data_claimer.bump,
     )]
     pub user_data_claimer: Option<Account<'info, UserAccount>>,
@@ -334,7 +334,7 @@ pub struct Claim<'info> {
     //Account of the token for initializer
     #[account(
         mut,
-        seeds = [USER_DATA_SEED.as_ref(), escrow_state.claimer.key().as_ref(), escrow_state.mint.as_ref()],
+        seeds = [USER_DATA_SEED, escrow_state.claimer.key().as_ref(), escrow_state.mint.as_ref()],
         bump = user_data.bump
     )]
     pub user_data: Option<Box<Account<'info, UserAccount>>>,
@@ -380,7 +380,7 @@ pub struct CloseDataAlt<'info> {
 }
 
 impl<'info> Deposit<'info> {
-    pub fn into_transfer_to_pda_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
+    pub fn get_transfer_to_pda_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
             from: self.initializer_deposit_token_account.to_account_info(),
             to: self.vault.to_account_info(),
@@ -391,7 +391,7 @@ impl<'info> Deposit<'info> {
 }
 
 impl<'info> Withdraw<'info> {
-    pub fn into_transfer_to_initializer_context(
+    pub fn get_transfer_to_initializer_context(
         &self,
     ) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
@@ -404,7 +404,7 @@ impl<'info> Withdraw<'info> {
 }
 
 impl<'info> InitializePayIn<'info> {
-    pub fn into_transfer_to_pda_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
+    pub fn get_transfer_to_pda_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
             from: self.initializer_deposit_token_account.to_account_info(),
             to: self.vault.to_account_info(),
@@ -415,7 +415,7 @@ impl<'info> InitializePayIn<'info> {
 }
 
 impl<'info> Refund<'info> {
-    pub fn into_transfer_to_initializer_context(
+    pub fn get_transfer_to_initializer_context(
         &self,
     ) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
@@ -428,7 +428,7 @@ impl<'info> Refund<'info> {
 }
 
 impl<'info> Claim<'info> {
-    pub fn into_transfer_to_claimer_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
+    pub fn get_transfer_to_claimer_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
             from: self.vault.as_ref().unwrap().to_account_info(),
             to: self.claimer_receive_token_account.as_ref().unwrap().to_account_info(),

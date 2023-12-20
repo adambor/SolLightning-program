@@ -10,7 +10,6 @@ use anchor_spl::token::{
     self, /*CloseAccount, */ Mint, Token,
     TokenAccount, Transfer
 };
-use crate::utils::utils::verify_ed25519_ix;
 use std::cmp;
 
 use enums::*;
@@ -31,7 +30,7 @@ mod instructions;
 declare_id!("8vowxbBrrfDU6Dz1bBCL4W9K5pTwsBLVAd8kJPsgLiLR");
 
 pub fn now_ts() -> Result<u64> {
-    Ok(clock::Clock::get()?.unix_timestamp.try_into().unwrap())
+    Ok(clock::Clock::get().unwrap().unix_timestamp.try_into().unwrap())
 }
 
 static AUTHORITY_SEED: &[u8] = b"authority";
@@ -46,12 +45,12 @@ pub mod verification_utils {
     use super::*;
 
     //Verifies if the claim is claimable by the claimer, provided the secret
-    pub fn check_claim(account: &Box<Account<EscrowState>>, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<()> {
+    pub fn check_claim(account: &Account<EscrowState>, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<()> {
 
         match account.kind {
             SwapType::Htlc => {
                 //Check HTLC hash for lightning
-                let hash_result = hash::hash(&secret).to_bytes();
+                let hash_result = hash::hash(secret).to_bytes();
 
                 require!(
                     hash_result == account.hash,
@@ -66,7 +65,7 @@ pub mod verification_utils {
                         //Extract output index from secret
                         let output_index = u32::from_le_bytes(secret[0..4].try_into().unwrap());
                         //Verify transaction, starting from byte 4 of the secret
-                        let opt_tx = txutils::txutils::verify_transaction(&secret[4..], output_index.into(), account.kind==SwapType::ChainNonced);
+                        let opt_tx = txutils::verify_transaction(&secret[4..], output_index.into(), account.kind==SwapType::ChainNonced);
             
                         //Has to be properly parsed
                         require!(
@@ -119,7 +118,7 @@ pub mod verification_utils {
                 let ix: Instruction = load_instruction_at_checked(0, ix_sysvar)?;
                 
                 //Throws on failure
-                txutils::txutils::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
+                txutils::verify_tx_ix(&ix, &tx_hash, account.confirmations as u32)?;
             }
         }
 
@@ -137,7 +136,7 @@ pub mod swap_program {
         amount: u64,
     ) -> Result<()> {
         token::transfer(
-            ctx.accounts.into_transfer_to_pda_context(),
+            ctx.accounts.get_transfer_to_pda_context(),
             amount,
         )?;
         
@@ -154,12 +153,12 @@ pub mod swap_program {
     ) -> Result<()> {
         let (_vault_authority, vault_authority_bump) =
             Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-        let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
+        let authority_seeds = &[AUTHORITY_SEED, &[vault_authority_bump]];
 
         if amount>0 {
             token::transfer(
                 ctx.accounts
-                    .into_transfer_to_initializer_context()
+                    .get_transfer_to_initializer_context()
                     .with_signer(&[&authority_seeds[..]]),
                 amount,
             )?;
@@ -227,16 +226,16 @@ pub mod swap_program {
         ctx.accounts.escrow_state.bump = *ctx.bumps.get("escrow_state").unwrap();
 
         token::transfer(
-            ctx.accounts.into_transfer_to_pda_context(),
+            ctx.accounts.get_transfer_to_pda_context(),
             ctx.accounts.escrow_state.initializer_amount,
         )?;
 
         emit!(InitializeEvent {
             hash: ctx.accounts.escrow_state.hash,
-            txo_hash: txo_hash,
+            txo_hash,
             nonce: ctx.accounts.escrow_state.nonce,
-            kind: kind,
-            sequence: sequence
+            kind,
+            sequence
         });
 
         Ok(())
@@ -328,10 +327,10 @@ pub mod swap_program {
 
         emit!(InitializeEvent {
             hash: ctx.accounts.escrow_state.hash,
-            txo_hash: txo_hash,
+            txo_hash,
             nonce: ctx.accounts.escrow_state.nonce,
-            kind: kind,
-            sequence: sequence
+            kind,
+            sequence
         });
 
         Ok(())
@@ -342,7 +341,7 @@ pub mod swap_program {
     pub fn offerer_refund(ctx: Context<Refund>, auth_expiry: u64) -> Result<()> {
         if auth_expiry>0 {
             //Load ed25519 verify instruction at 0-th index
-            let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar.as_ref().unwrap())?;
+            let ix: Instruction = load_instruction_at_checked(0, ctx.accounts.ix_sysvar.as_ref().unwrap())?;
 
             //Construct "refund" message
             let mut msg = Vec::with_capacity(6+8+8+8+32+8);
@@ -355,7 +354,7 @@ pub mod swap_program {
     
             //Check that the ed25519 verify instruction verified the signature of the hash of the "refund" message
             //Throws on verify fail
-            verify_ed25519_ix(&ix, &ctx.accounts.escrow_state.claimer.to_bytes(), &hash::hash(&msg).to_bytes())?;
+            utils::verify_ed25519_ix(&ix, &ctx.accounts.escrow_state.claimer.to_bytes(), &hash::hash(&msg).to_bytes())?;
     
         } else {
             //Check if the contract is expired yet
@@ -365,10 +364,10 @@ pub mod swap_program {
                 //Check that there was a previous instruction verifying
                 // blockheight of btcrelay program
                 // btc_relay.blockheight > ctx.accounts.escrow_state.expiry
-                let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar.as_ref().unwrap())?;
+                let ix: Instruction = load_instruction_at_checked(0, ctx.accounts.ix_sysvar.as_ref().unwrap())?;
 
                 //Throws on failure
-                txutils::txutils::verify_blockheight_ix(&ix, ctx.accounts.escrow_state.expiry.try_into().unwrap(), 2)?;
+                txutils::verify_blockheight_ix(&ix, ctx.accounts.escrow_state.expiry.try_into().unwrap(), 2)?;
             } else {
                 //Expiry is expressed as UNIX timestamp in seconds
                 require!(
@@ -395,11 +394,11 @@ pub mod swap_program {
             //Refund in token to external wallet
             let (_vault_authority, vault_authority_bump) =
                 Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-            let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
+            let authority_seeds = &[AUTHORITY_SEED, &[vault_authority_bump]];
 
             token::transfer(
                 ctx.accounts
-                    .into_transfer_to_initializer_context()
+                    .get_transfer_to_initializer_context()
                     .with_signer(&[&authority_seeds[..]]),
                 ctx.accounts.escrow_state.initializer_amount,
             )?;
@@ -468,11 +467,11 @@ pub mod swap_program {
             //Pay out to external wallet
             let (_vault_authority, vault_authority_bump) =
                 Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-            let authority_seeds = &[&AUTHORITY_SEED[..], &[vault_authority_bump]];
+            let authority_seeds = &[AUTHORITY_SEED, &[vault_authority_bump]];
 
             token::transfer(
                 ctx.accounts
-                    .into_transfer_to_claimer_context()
+                    .get_transfer_to_claimer_context()
                     .with_signer(&[&authority_seeds[..]]),
                 ctx.accounts.escrow_state.initializer_amount,
             )?;
@@ -503,7 +502,7 @@ pub mod swap_program {
         } else {
             emit!(ClaimEvent {
                 hash: ctx.accounts.escrow_state.hash,
-                secret: secret,
+                secret,
                 sequence: ctx.accounts.escrow_state.sequence
             });
         }
