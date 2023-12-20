@@ -17,6 +17,7 @@ fn now_ts() -> Result<u64> {
     Ok(clock::Clock::get().unwrap().unix_timestamp.try_into().unwrap())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn process_initialize(
     escrow_state: &mut Account<EscrowState>,
     bump: u8,
