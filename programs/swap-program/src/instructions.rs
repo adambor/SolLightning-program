@@ -22,7 +22,7 @@ pub struct Deposit<'info> {
         seeds = [USER_DATA_SEED.as_ref(), initializer.to_account_info().key.as_ref(), mint.to_account_info().key.as_ref()],
         bump,
         payer = initializer,
-        space = UserAccount::space()
+        space = UserAccount::SPACE
     )]
     pub user_data: Account<'info, UserAccount>,
 
@@ -112,7 +112,7 @@ pub struct InitializePayIn<'info> {
         seeds = [b"state".as_ref(), escrow_seed.as_ref()],
         bump,
         payer = offerer,
-        space = EscrowState::space(),
+        space = EscrowState::SPACE,
         //We need to verify existence of the recipient (either ATA or UserData PDA)
         constraint = if pay_out { claimer_token_account.is_some() } else { user_data_claimer.is_some() }
     )]
@@ -181,7 +181,7 @@ pub struct Initialize<'info> {
         seeds = [b"state".as_ref(), escrow_seed.as_ref()],
         bump,
         payer = claimer,
-        space = EscrowState::space(),
+        space = EscrowState::SPACE,
         //We need to verify existence of the recipient (either ATA or UserData PDA)
         constraint = if pay_out { claimer_token_account.is_some() } else { user_data_claimer.is_some() }
     )]

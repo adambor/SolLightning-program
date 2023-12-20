@@ -76,13 +76,9 @@ pub struct UserAccount {
 }
 
 impl EscrowState {
-    pub fn space() -> usize {
-        8 + 1 + 2 + 8 + 192 + 8 + 8 + 1 + 1 + 8 + 8 + 8
-    }
+    pub const SPACE: usize = 8 + 1 + 2 + 8 + 192 + 8 + 8 + 1 + 1 + 8 + 8 + 8;
 }
 
 impl UserAccount {
-    pub fn space() -> usize {
-        8 + 8 + 8 + (8*6*SWAP_TYPE_COUNT)
-    }
+    pub const SPACE: usize = 8 + 8 + 8 + (8*6*SWAP_TYPE_COUNT);
 }
