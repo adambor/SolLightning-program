@@ -201,7 +201,8 @@ pub mod swap_program {
         auth_expiry: u64,
         escrow_nonce: u64,
         pay_out: bool,
-        txo_hash: [u8; 32], //Only for on-chain
+        txo_hash: [u8; 32], //Only for on-chain,
+        sequence: u64
     ) -> Result<()> {
         require!(
             kind <= 3,
@@ -237,6 +238,7 @@ pub mod swap_program {
 
         ctx.accounts.escrow_state.expiry = expiry;
         ctx.accounts.escrow_state.hash = hash;
+        ctx.accounts.escrow_state.sequence = sequence;
 
         token::transfer(
             ctx.accounts.into_transfer_to_pda_context(),
@@ -247,7 +249,8 @@ pub mod swap_program {
             hash: ctx.accounts.escrow_state.hash,
             txo_hash: txo_hash,
             nonce: ctx.accounts.escrow_state.nonce,
-            kind: kind
+            kind: kind,
+            sequence: sequence
         });
 
         Ok(())
@@ -272,7 +275,8 @@ pub mod swap_program {
         pay_out: bool,
         txo_hash: [u8; 32], //Only for on-chain
         security_deposit: u64,
-        claimer_bounty: u64
+        claimer_bounty: u64,
+        sequence: u64
     ) -> Result<()> {
         require!(
             kind <= 3,
@@ -323,6 +327,7 @@ pub mod swap_program {
 
         ctx.accounts.escrow_state.expiry = expiry;
         ctx.accounts.escrow_state.hash = hash;
+        ctx.accounts.escrow_state.sequence = sequence;
 
         ctx.accounts.escrow_state.security_deposit = security_deposit;
         ctx.accounts.escrow_state.claimer_bounty = claimer_bounty;
@@ -333,7 +338,8 @@ pub mod swap_program {
             hash: ctx.accounts.escrow_state.hash,
             txo_hash: txo_hash,
             nonce: ctx.accounts.escrow_state.nonce,
-            kind: kind
+            kind: kind,
+            sequence: sequence
         });
 
         Ok(())
@@ -351,6 +357,7 @@ pub mod swap_program {
             msg.extend_from_slice(b"refund");
             msg.extend_from_slice(&ctx.accounts.escrow_state.initializer_amount.to_le_bytes());
             msg.extend_from_slice(&ctx.accounts.escrow_state.expiry.to_le_bytes());
+            msg.extend_from_slice(&ctx.accounts.escrow_state.sequence.to_le_bytes());
             msg.extend_from_slice(&ctx.accounts.escrow_state.hash);
             msg.extend_from_slice(&auth_expiry.to_le_bytes());
     
@@ -449,7 +456,8 @@ pub mod swap_program {
         }
         
         emit!(RefundEvent {
-            hash: ctx.accounts.escrow_state.hash
+            hash: ctx.accounts.escrow_state.hash,
+            sequence: ctx.accounts.escrow_state.sequence
         });
 
         let initializer = if ctx.accounts.escrow_state.pay_in { ctx.accounts.offerer.to_account_info() } else { ctx.accounts.claimer.to_account_info() };
@@ -562,12 +570,14 @@ pub mod swap_program {
 
             emit!(ClaimEvent {
                 hash: ctx.accounts.escrow_state.hash,
-                secret: [0; 32].to_vec()
+                secret: [0; 32].to_vec(),
+                sequence: ctx.accounts.escrow_state.sequence
             });
         } else {
             emit!(ClaimEvent {
                 hash: ctx.accounts.escrow_state.hash,
-                secret: secret
+                secret: secret,
+                sequence: ctx.accounts.escrow_state.sequence
             });
         }
 
