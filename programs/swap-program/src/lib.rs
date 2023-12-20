@@ -378,37 +378,17 @@ pub mod swap_program {
             }
         }
 
-        //This is used to update the on-chain reputation of claimer
-        // this was created before introduction of optional accounts,
-        // so it is handled by passing in the UserAccount as remaining account
+        //Update the on-chain reputation of claimer in case this was not pay_out swap
         if !ctx.accounts.escrow_state.pay_out {
-            //Check the remainingAccounts
-            let user_data_acc = &ctx.remaining_accounts[0];
-            let (user_data_address, _user_data_bump) =
-                Pubkey::find_program_address(&[USER_DATA_SEED, ctx.accounts.escrow_state.claimer.as_ref(), ctx.accounts.escrow_state.mint.as_ref()], ctx.program_id);
-            
-            require!(
-                user_data_address==*user_data_acc.key,
-                SwapErrorCode::InvalidUserData
-            );
-
-            require!(
-                user_data_acc.is_writable,
-                SwapErrorCode::InvalidUserData
-            );
-
-            let mut data = user_data_acc.try_borrow_mut_data()?;
-            let mut user_data = UserAccount::try_deserialize(&mut &**data)?;
+            let user_data_claimer = ctx.accounts.user_data_claimer.as_mut().expect("Claimer UserData not provided for pay_out=false swap");
 
             if auth_expiry>0 {
-                user_data.coop_close_volume[ctx.accounts.escrow_state.kind as usize] = user_data.coop_close_volume[ctx.accounts.escrow_state.kind as usize].saturating_add(ctx.accounts.escrow_state.initializer_amount);
-                user_data.coop_close_count[ctx.accounts.escrow_state.kind as usize] += 1;
+                user_data_claimer.coop_close_volume[ctx.accounts.escrow_state.kind as usize] = user_data_claimer.coop_close_volume[ctx.accounts.escrow_state.kind as usize].saturating_add(ctx.accounts.escrow_state.initializer_amount);
+                user_data_claimer.coop_close_count[ctx.accounts.escrow_state.kind as usize] += 1;
             } else {
-                user_data.fail_volume[ctx.accounts.escrow_state.kind as usize] = user_data.fail_volume[ctx.accounts.escrow_state.kind as usize].saturating_add(ctx.accounts.escrow_state.initializer_amount);
-                user_data.fail_count[ctx.accounts.escrow_state.kind as usize] += 1;
+                user_data_claimer.fail_volume[ctx.accounts.escrow_state.kind as usize] = user_data_claimer.fail_volume[ctx.accounts.escrow_state.kind as usize].saturating_add(ctx.accounts.escrow_state.initializer_amount);
+                user_data_claimer.fail_count[ctx.accounts.escrow_state.kind as usize] += 1;
             }
-
-            user_data.try_serialize(&mut *data)?;
         }
 
         if ctx.accounts.escrow_state.pay_in {

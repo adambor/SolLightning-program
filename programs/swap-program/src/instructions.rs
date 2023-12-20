@@ -226,12 +226,13 @@ pub struct Refund<'info> {
         constraint = escrow_state.offerer == *offerer.key,
         constraint = escrow_state.claimer == *claimer.key,
         constraint = if escrow_state.pay_in { vault.is_some() && vault_authority.is_some() && initializer_deposit_token_account.is_some() && token_program.is_some() } else { user_data.is_some() },
-        constraint = initializer_deposit_token_account.is_none() || escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.as_ref().unwrap().to_account_info().key
+        constraint = initializer_deposit_token_account.is_none() || escrow_state.initializer_deposit_token_account == *initializer_deposit_token_account.as_ref().unwrap().to_account_info().key,
+        constraint = escrow_state.pay_out || user_data_claimer.is_some()
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
     ////////////////////////////////////////
-    //For Pay out
+    //For Pay in
     ////////////////////////////////////////
     #[account(
         mut,
@@ -253,15 +254,26 @@ pub struct Refund<'info> {
     pub token_program: Option<Program<'info, Token>>,
 
     ////////////////////////////////////////
-    //For NOT Pay out
+    //For NOT Pay in
     ////////////////////////////////////////
-    //Account of the token for initializer
+    //User data account of the offerer, funds are refunded there
     #[account(
         mut,
         seeds = [USER_DATA_SEED.as_ref(), offerer.key.as_ref(), escrow_state.mint.as_ref()],
         bump = user_data.bump,
     )]
     pub user_data: Option<Account<'info, UserAccount>>,
+
+    ////////////////////////////////////////
+    //For NOT Pay out
+    ////////////////////////////////////////
+    //User data account of the claimer, used to lower his reputation
+    #[account(
+        mut,
+        seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), escrow_state.mint.as_ref()],
+        bump = user_data_claimer.bump,
+    )]
+    pub user_data_claimer: Option<Account<'info, UserAccount>>,
 
     ////////////////////////////////////////
     //For Refund with signature
