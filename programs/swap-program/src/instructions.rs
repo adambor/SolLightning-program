@@ -188,7 +188,9 @@ pub struct Initialize<'info> {
         seeds = [b"state".as_ref(), escrow_seed.as_ref()],
         bump,
         payer = claimer,
-        space = EscrowState::space()
+        space = EscrowState::space(),
+        //We need to verify existence of this PDA, so it can be properly provided in the possible refund()
+        constraint = pay_out || user_data_claimer.is_some()
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
@@ -196,7 +198,16 @@ pub struct Initialize<'info> {
     pub mint: Account<'info, Mint>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>
+    pub rent: Sysvar<'info, Rent>,
+
+    ////////////////////////////////////////
+    //For NOT Pay out
+    ////////////////////////////////////////
+    #[account(
+        seeds = [USER_DATA_SEED.as_ref(), claimer.key.as_ref(), mint.to_account_info().key.as_ref()],
+        bump
+    )]
+    pub user_data_claimer: Option<Account<'info, UserAccount>>
 }
 
 #[derive(Accounts)]
