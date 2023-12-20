@@ -110,7 +110,8 @@ pub struct InitializePayIn<'info> {
     //Account of the token for initializer
     #[account(
          mut,
-         constraint = initializer_deposit_token_account.amount >= initializer_amount
+         constraint = initializer_deposit_token_account.amount >= initializer_amount,
+         token::mint = mint
     )]
     pub initializer_deposit_token_account: Account<'info, TokenAccount>,
 
