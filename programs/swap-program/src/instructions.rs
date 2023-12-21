@@ -91,6 +91,7 @@ pub struct Withdraw<'info> {
     pub token_program: Program<'info, Token>
 }
 
+//TOOD: Update instruction macro with newly used struct
 #[derive(Accounts)]
 #[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: SwapType, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
 pub struct InitializePayIn<'info> {
@@ -159,6 +160,7 @@ pub struct InitializePayIn<'info> {
     pub claimer_token_account: Option<Account<'info, TokenAccount>>,
 }
 
+//TOOD: Update instruction macro with newly used struct
 #[derive(Accounts)]
 #[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: SwapType, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
 pub struct Initialize<'info> {
