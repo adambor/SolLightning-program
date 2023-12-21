@@ -39,7 +39,7 @@ pub mod verification_utils {
     use super::*;
 
     //Verifies if the claim is claimable by the claimer, provided the secret
-    pub fn check_claim(account: &Box<Account<EscrowState>>, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<()> {
+    pub fn check_claim(account: &Box<Account<EscrowState>>, ix_sysvar: &AccountInfo, secret: &[u8]) -> Result<[u8; 32]> {
         // let current_timestamp = now_ts()?;
         //
         // require!(
@@ -49,12 +49,16 @@ pub mod verification_utils {
 
         //Check HTLC hash for lightning
         if account.kind==KIND_LN {
-            let hash_result = hash::hash(&secret).to_bytes();
+            let use_secret: [u8; 32] = secret[..32].try_into().unwrap();
+
+            let hash_result = hash::hash(&use_secret).to_bytes();
 
             require!(
                 hash_result == account.hash,
                 SwapErrorCode::InvalidSecret
             );
+
+            return Ok(use_secret);
         }
 
         if account.kind==KIND_CHAIN || account.kind==KIND_CHAIN_NONCED {
@@ -127,7 +131,7 @@ pub mod verification_utils {
             );
         }
 
-        Ok(())
+        Ok([0; 32])
     }
 }
 
@@ -461,6 +465,7 @@ pub mod test_anchor {
 
     //Claim the swap using the "secret", or data in the provided "data" account
     pub fn claimer_claim(ctx: Context<Claim>, secret: Vec<u8>) -> Result<()> {
+        let event_secret: [u8; 32];
         if ctx.accounts.data.is_some() {
             //Use the raw data from data account
             let data_acc = ctx.accounts.data.as_mut().unwrap();
@@ -477,11 +482,11 @@ pub mod test_anchor {
                     SwapErrorCode::InvalidUserData
                 );
         
-                verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &acc_data[32..])?;
+                event_secret = verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &acc_data[32..])?;
             }
         } else {
             //Use the function param - secret
-            verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &secret)?;
+            event_secret = verification_utils::check_claim(&ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &secret)?;
         }
 
         if ctx.accounts.escrow_state.pay_out {
@@ -504,6 +509,11 @@ pub mod test_anchor {
             user_data.success_count[usize::from(ctx.accounts.escrow_state.kind)] += 1;
         }
 
+        emit!(ClaimEvent {
+            hash: ctx.accounts.escrow_state.hash,
+            secret: event_secret.to_vec()
+        });
+
         if ctx.accounts.data.is_some() {
             //Close the data account
             let data_acc = ctx.accounts.data.as_mut().unwrap();
@@ -514,16 +524,6 @@ pub mod test_anchor {
 
             let mut signer_balance = ctx.accounts.signer.try_borrow_mut_lamports()?;
             **signer_balance += balance;
-
-            emit!(ClaimEvent {
-                hash: ctx.accounts.escrow_state.hash,
-                secret: [0; 32].to_vec()
-            });
-        } else {
-            emit!(ClaimEvent {
-                hash: ctx.accounts.escrow_state.hash,
-                secret: secret
-            });
         }
 
         //Pay out claimer bounty to signer, rest goes back to initializer
