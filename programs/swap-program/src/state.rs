@@ -10,10 +10,10 @@ pub struct EscrowState {
     pub data: SwapData,
     
     pub offerer: Pubkey, //Offerer, depositing funds into the swap contract
-    pub initializer_deposit_token_account: Pubkey, //ATA of the offerer, left empty for non pay_in swaps
+    pub offerer_ata: Pubkey, //ATA of the offerer, left empty for non pay_in swaps
 
     pub claimer: Pubkey, //Claimer, able to claim the funds from the swap contract, when spend condition is met
-    pub claimer_token_account: Pubkey, //ATA of the claimer, ignored for non pay_out swaps
+    pub claimer_ata: Pubkey, //ATA of the claimer, ignored for non pay_out swaps
 
     pub mint: Pubkey, //Pubkey of the token mint
 

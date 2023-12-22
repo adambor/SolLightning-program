@@ -50,7 +50,7 @@ pub mod swap_program {
         amount: u64,
     ) -> Result<()> {
         token::transfer(
-            ctx.accounts.get_transfer_to_pda_context(),
+            ctx.accounts.get_transfer_to_vault_context(),
             amount,
         )?;
         
@@ -72,7 +72,7 @@ pub mod swap_program {
         if amount>0 {
             token::transfer(
                 ctx.accounts
-                    .get_transfer_to_initializer_context()
+                    .get_transfer_to_signer_context()
                     .with_signer(&[&authority_seeds[..]]),
                 amount,
             )?;
@@ -101,14 +101,14 @@ pub mod swap_program {
             ctx.bumps.escrow_state,
             &ctx.accounts.offerer.to_account_info(),
             &ctx.accounts.claimer,
-            &ctx.accounts.claimer_token_account,
+            &ctx.accounts.claimer_ata,
             &ctx.accounts.mint,
             &swap_data,
             txo_hash,
             auth_expiry,
         )?;
 
-        ctx.accounts.escrow_state.initializer_deposit_token_account = *ctx.accounts.initializer_deposit_token_account.to_account_info().key;
+        ctx.accounts.escrow_state.offerer_ata = *ctx.accounts.offerer_ata.to_account_info().key;
         token::transfer(
             ctx.accounts.get_transfer_to_pda_context(),
             ctx.accounts.escrow_state.data.initializer_amount,
@@ -143,7 +143,7 @@ pub mod swap_program {
             ctx.bumps.escrow_state,
             &ctx.accounts.offerer.to_account_info(),
             &ctx.accounts.claimer,
-            &ctx.accounts.claimer_token_account,
+            &ctx.accounts.claimer_ata,
             &ctx.accounts.mint,
             &swap_data,
             txo_hash,
@@ -173,7 +173,7 @@ pub mod swap_program {
         ctx.accounts.escrow_state.security_deposit = security_deposit;
         ctx.accounts.escrow_state.claimer_bounty = claimer_bounty;
 
-        ctx.accounts.user_data.amount -= swap_data.initializer_amount;
+        ctx.accounts.offerer_user_data.amount -= swap_data.initializer_amount;
 
         Ok(())
     }
@@ -181,10 +181,10 @@ pub mod swap_program {
     //Refund back to offerer once enough time has passed,
     // or by providing a "refund" message signed by claimer
     pub fn offerer_refund(ctx: Context<Refund>, auth_expiry: u64) -> Result<()> {
-        let is_cooperative = ixs::refund::process_refund(auth_expiry, &ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &mut ctx.accounts.user_data_claimer)?;
+        let is_cooperative = ixs::refund::process_refund(auth_expiry, &ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &mut ctx.accounts.claimer_user_data)?;
 
         //Refund to internal wallet
-        ctx.accounts.user_data.amount += ctx.accounts.escrow_state.data.initializer_amount;
+        ctx.accounts.offerer_user_data.amount += ctx.accounts.escrow_state.data.initializer_amount;
 
         ixs::refund::pay_security_deposit(&mut ctx.accounts.escrow_state, &mut ctx.accounts.offerer, &mut ctx.accounts.claimer, is_cooperative)?;
 
@@ -194,7 +194,7 @@ pub mod swap_program {
     //Refund back to offerer once enough time has passed,
     // or by providing a "refund" message signed by claimer
     pub fn offerer_refund_pay_in(ctx: Context<RefundPayIn>, auth_expiry: u64) -> Result<()> {
-        let is_cooperative = ixs::refund::process_refund(auth_expiry, &ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &mut ctx.accounts.user_data_claimer)?;
+        let is_cooperative = ixs::refund::process_refund(auth_expiry, &ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &mut ctx.accounts.claimer_user_data)?;
 
         //Refund in token to external wallet
         let (_vault_authority, vault_authority_bump) =
@@ -217,7 +217,7 @@ pub mod swap_program {
     pub fn claimer_claim(ctx: Context<Claim>, secret: Vec<u8>) -> Result<()> {
         ixs::claim::process_claim(&ctx.accounts.signer, &ctx.accounts.escrow_state.data, &ctx.accounts.ix_sysvar, &mut ctx.accounts.data, &secret)?;
 
-        let user_data = &mut ctx.accounts.user_data;
+        let user_data = &mut ctx.accounts.claimer_user_data;
         user_data.amount += ctx.accounts.escrow_state.data.initializer_amount;
         user_data.success_volume[ctx.accounts.escrow_state.data.kind as usize] = user_data.success_volume[ctx.accounts.escrow_state.data.kind as usize].saturating_add(ctx.accounts.escrow_state.data.initializer_amount);
         user_data.success_count[ctx.accounts.escrow_state.data.kind as usize] += 1;

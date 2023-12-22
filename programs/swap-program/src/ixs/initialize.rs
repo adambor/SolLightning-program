@@ -23,7 +23,7 @@ pub fn process_initialize(
     bump: u8,
     offerer: &AccountInfo,
     claimer: &AccountInfo,
-    claimer_token_account: &Option<Account<TokenAccount>>,
+    claimer_ata: &Option<Account<TokenAccount>>,
     mint: &Account<Mint>,
 
     swap_data: &SwapData,
@@ -54,8 +54,8 @@ pub fn process_initialize(
     escrow_state.claimer = *claimer.to_account_info().key;
 
     if swap_data.pay_out {
-        let claimer_ata = claimer_token_account.as_ref().expect("Claimer ATA not provided for pay_out=true swap");
-        escrow_state.claimer_token_account = *claimer_ata.to_account_info().key;
+        let claimer_ata = claimer_ata.as_ref().expect("Claimer ATA not provided for pay_out=true swap");
+        escrow_state.claimer_ata = *claimer_ata.to_account_info().key;
     }
     escrow_state.mint = *mint.to_account_info().key;
 
