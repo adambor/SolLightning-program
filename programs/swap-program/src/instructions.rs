@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 use crate::*;
 use crate::USER_DATA_SEED;
-use crate::SwapType;
 
 #[derive(Accounts)]
 #[instruction(amount: u64)]
@@ -91,9 +90,10 @@ pub struct Withdraw<'info> {
     pub token_program: Program<'info, Token>
 }
 
-//TOOD: Update instruction macro with newly used struct
 #[derive(Accounts)]
-#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: SwapType, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
+#[instruction(
+    swap_data: SwapData
+)]
 pub struct InitializePayIn<'info> {
     #[account(mut)]
     pub offerer: Signer<'info>,
@@ -102,7 +102,7 @@ pub struct InitializePayIn<'info> {
     //Account of the token for initializer
     #[account(
          mut,
-         constraint = initializer_deposit_token_account.amount >= initializer_amount,
+         constraint = initializer_deposit_token_account.amount >= swap_data.initializer_amount,
          token::mint = mint
     )]
     pub initializer_deposit_token_account: Account<'info, TokenAccount>,
@@ -110,12 +110,12 @@ pub struct InitializePayIn<'info> {
     //Data storage account
     #[account(
         init,
-        seeds = [b"state".as_ref(), escrow_seed.as_ref()],
+        seeds = [b"state".as_ref(), swap_data.hash.as_ref()],
         bump,
         payer = offerer,
         space = EscrowState::SPACE,
         //We need to verify existence of the recipient (either ATA or UserData PDA)
-        constraint = if pay_out { claimer_token_account.is_some() } else { user_data_claimer.is_some() }
+        constraint = if swap_data.pay_out { claimer_token_account.is_some() } else { user_data_claimer.is_some() }
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
@@ -160,9 +160,10 @@ pub struct InitializePayIn<'info> {
     pub claimer_token_account: Option<Account<'info, TokenAccount>>,
 }
 
-//TOOD: Update instruction macro with newly used struct
 #[derive(Accounts)]
-#[instruction(initializer_amount: u64, expiry: u64, escrow_seed: [u8; 32], kind: SwapType, confirmations: u16, auth_expiry: u64, escrow_nonce: u64, pay_out: bool)]
+#[instruction(
+    swap_data: SwapData
+)]
 pub struct Initialize<'info> {
     #[account(mut)]
     pub claimer: Signer<'info>,
@@ -173,19 +174,19 @@ pub struct Initialize<'info> {
         mut,
         seeds = [USER_DATA_SEED, offerer.key.as_ref(), mint.to_account_info().key.as_ref()],
         bump = user_data.bump,
-        constraint = user_data.amount >= initializer_amount
+        constraint = user_data.amount >= swap_data.initializer_amount
     )]
     pub user_data: Account<'info, UserAccount>,
     
     //Data storage account
     #[account(
         init,
-        seeds = [b"state".as_ref(), escrow_seed.as_ref()],
+        seeds = [b"state".as_ref(), swap_data.hash.as_ref()],
         bump,
         payer = claimer,
         space = EscrowState::SPACE,
         //We need to verify existence of the recipient (either ATA or UserData PDA)
-        constraint = if pay_out { claimer_token_account.is_some() } else { user_data_claimer.is_some() }
+        constraint = if swap_data.pay_out { claimer_token_account.is_some() } else { user_data_claimer.is_some() }
     )]
     pub escrow_state: Box<Account<'info, EscrowState>>,
 
