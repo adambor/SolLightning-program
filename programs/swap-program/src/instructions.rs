@@ -102,7 +102,7 @@ pub struct InitializePayIn<'info> {
     //Account of the token for initializer
     #[account(
          mut,
-         constraint = offerer_ata.amount >= swap_data.initializer_amount,
+         constraint = offerer_ata.amount >= swap_data.amount,
          token::mint = mint
     )]
     pub offerer_ata: Account<'info, TokenAccount>,
@@ -174,7 +174,7 @@ pub struct Initialize<'info> {
         mut,
         seeds = [USER_DATA_SEED, offerer.key.as_ref(), mint.to_account_info().key.as_ref()],
         bump = offerer_user_data.bump,
-        constraint = offerer_user_data.amount >= swap_data.initializer_amount
+        constraint = offerer_user_data.amount >= swap_data.amount
     )]
     pub offerer_user_data: Account<'info, UserAccount>,
     

@@ -33,10 +33,10 @@ pub fn process_refund(auth_expiry: u64, escrow_state: &Account<EscrowState>, ix_
         let user_data_claimer = user_data_claimer.as_mut().expect("Claimer UserData not provided for pay_out=false swap");
 
         if is_cooperative {
-            user_data_claimer.coop_close_volume[escrow_state.data.kind as usize] = user_data_claimer.coop_close_volume[escrow_state.data.kind as usize].saturating_add(escrow_state.data.initializer_amount);
+            user_data_claimer.coop_close_volume[escrow_state.data.kind as usize] = user_data_claimer.coop_close_volume[escrow_state.data.kind as usize].saturating_add(escrow_state.data.amount);
             user_data_claimer.coop_close_count[escrow_state.data.kind as usize] += 1;
         } else {
-            user_data_claimer.fail_volume[escrow_state.data.kind as usize] = user_data_claimer.fail_volume[escrow_state.data.kind as usize].saturating_add(escrow_state.data.initializer_amount);
+            user_data_claimer.fail_volume[escrow_state.data.kind as usize] = user_data_claimer.fail_volume[escrow_state.data.kind as usize].saturating_add(escrow_state.data.amount);
             user_data_claimer.fail_count[escrow_state.data.kind as usize] += 1;
         }
     }
@@ -58,7 +58,7 @@ pub fn verify_signature(auth_expiry: u64, escrow_state: &Account<EscrowState>, i
     //Construct "refund" message
     let mut msg = Vec::with_capacity(6+8+8+8+32+8);
     msg.extend_from_slice(b"refund");
-    msg.extend_from_slice(&escrow_state.data.initializer_amount.to_le_bytes());
+    msg.extend_from_slice(&escrow_state.data.amount.to_le_bytes());
     msg.extend_from_slice(&escrow_state.data.expiry.to_le_bytes());
     msg.extend_from_slice(&escrow_state.data.sequence.to_le_bytes());
     msg.extend_from_slice(&escrow_state.data.hash);

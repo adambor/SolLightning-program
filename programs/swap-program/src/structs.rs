@@ -21,7 +21,7 @@ pub struct SwapData {
     //Used to determine if payout should be paid out to external wallet, or to the contract vault
     pub pay_out: bool,
     
-    pub initializer_amount: u64, //Token amount
+    pub amount: u64, //Token amount
     pub expiry: u64, //UNIX seconds expiry timestamp, offerer can refund the swap after this timestamp
 
     //Uniquely identifies this swap PDA
