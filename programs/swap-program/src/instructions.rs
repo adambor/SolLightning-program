@@ -11,7 +11,8 @@ pub struct Deposit<'info> {
     //Account of the token for initializer
     #[account(
          mut,
-         constraint = signer_ata.amount >= amount
+         constraint = signer_ata.amount >= amount,
+         token::mint = mint
     )]
     pub signer_ata: Account<'info, TokenAccount>,
 
@@ -56,7 +57,10 @@ pub struct Withdraw<'info> {
     pub signer: Signer<'info>,
 
     //Account of the token for initializer
-    #[account(mut)]
+    #[account(
+        mut,
+        token::mint = mint
+    )]
     pub signer_ata: Account<'info, TokenAccount>,
 
     //Account holding the tokens
@@ -269,7 +273,10 @@ pub struct RefundPayIn<'info> {
     /// CHECK: We are only transfering lamports to this account, we are not reading or writing data.
     #[account(mut)]
     pub claimer: AccountInfo<'info>,
-    #[account(mut)]
+    #[account(
+        mut,
+        token::mint = escrow_state.mint
+    )]
     pub offerer_ata: Account<'info, TokenAccount>,
 
     #[account(
@@ -371,7 +378,10 @@ pub struct ClaimPayOut<'info> {
     #[account(address = IX_ID)]
     pub ix_sysvar: AccountInfo<'info>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        token::mint = escrow_state.mint
+    )]
     pub claimer_ata: Box<Account<'info, TokenAccount>>,
 
     #[account(
