@@ -330,6 +330,11 @@ pub mod test_anchor {
     // or by providing a "refund" message signed by claimer
     pub fn offerer_refund(ctx: Context<Refund>, auth_expiry: u64) -> Result<()> {
         if auth_expiry>0 {
+            require!(
+                auth_expiry > now_ts()?,
+                SwapErrorCode::SignatureVerificationFailed
+            );
+
             //Load ed25519 verify instruction at 0-th index
             let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar.as_ref().unwrap())?;
 
