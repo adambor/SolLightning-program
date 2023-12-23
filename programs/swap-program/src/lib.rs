@@ -65,9 +65,7 @@ pub mod swap_program {
         ctx: Context<Withdraw>,
         amount: u64,
     ) -> Result<()> {
-        let (_vault_authority, vault_authority_bump) =
-            Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-        let authority_seeds = &[AUTHORITY_SEED, &[vault_authority_bump]];
+        let authority_seeds = &[AUTHORITY_SEED, &[ctx.bumps.vault_authority]];
 
         if amount>0 {
             token::transfer(
@@ -197,9 +195,7 @@ pub mod swap_program {
         let is_cooperative = ixs::refund::process_refund(auth_expiry, &ctx.accounts.escrow_state, &ctx.accounts.ix_sysvar, &mut ctx.accounts.claimer_user_data)?;
 
         //Refund in token to external wallet
-        let (_vault_authority, vault_authority_bump) =
-            Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-        let authority_seeds = &[AUTHORITY_SEED, &[vault_authority_bump]];
+        let authority_seeds = &[AUTHORITY_SEED, &[ctx.bumps.vault_authority]];
 
         token::transfer(
             ctx.accounts
@@ -231,9 +227,7 @@ pub mod swap_program {
     pub fn claimer_claim_pay_out(ctx: Context<ClaimPayOut>, secret: Vec<u8>) -> Result<()> {
         ixs::claim::process_claim(&ctx.accounts.signer, &ctx.accounts.escrow_state.data, &ctx.accounts.ix_sysvar, &mut ctx.accounts.data, &secret)?;
 
-        let (_vault_authority, vault_authority_bump) =
-        Pubkey::find_program_address(&[AUTHORITY_SEED], ctx.program_id);
-        let authority_seeds = &[AUTHORITY_SEED, &[vault_authority_bump]];
+        let authority_seeds = &[AUTHORITY_SEED, &[ctx.bumps.vault_authority]];
 
         token::transfer(
             ctx.accounts
