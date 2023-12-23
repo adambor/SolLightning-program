@@ -53,7 +53,7 @@ pub fn process_refund(auth_expiry: u64, escrow_state: &Account<EscrowState>, ix_
 //Verifies cooperative refund using the signature from claimer, throws on failure
 pub fn verify_signature(auth_expiry: u64, escrow_state: &Account<EscrowState>, ix_sysvar: &AccountInfo) -> Result<()> {
     require!(
-        auth_expiry < now_ts()?,
+        auth_expiry > now_ts()?,
         SwapErrorCode::AuthExpired
     );
 
