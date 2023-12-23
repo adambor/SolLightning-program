@@ -2,6 +2,8 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum SwapErrorCode {
+    #[msg("Authorization expired.")]
+    AuthExpired,
     #[msg("Request not expired yet.")]
     NotExpiredYet,
     #[msg("Request already expired.")]
