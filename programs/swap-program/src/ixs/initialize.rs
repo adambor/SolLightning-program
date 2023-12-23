@@ -33,7 +33,7 @@ pub fn process_initialize(
 ) -> Result<()> {
     require!(
         auth_expiry > now_ts()?,
-        SwapErrorCode::AlreadyExpired
+        SwapErrorCode::AuthExpired
     );
 
     require!(
