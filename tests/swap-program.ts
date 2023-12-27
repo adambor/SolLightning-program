@@ -168,7 +168,6 @@
 //Claim data.kind=CHAIN with valid tx
 //Claim data.kind=CHAIN with valid big tx (50kB+)
 //FAIL:
-//Signer not signed
 //Wrong escrow_state (data.pay_out = true)
 //#IF (data.pay_in = true)
 //  Initializer not offerer
@@ -176,10 +175,6 @@
 //  Initializer not claimer
 //#END
 //Wrong ix_sysvar
-//Uninitialized claimer_user_data
-//claimer_user_data of other signer
-//claimer_user_data of other mint
-//claimer_user_data of other signer & mint
 //#IF (accounts.data.is_some() = true)
 //  Invalid data account (belongs to different key)
 //#END
@@ -205,6 +200,11 @@
 //  Wrong btcrelay txhash verified
 //#END
 
+//Uninitialized claimer_user_data
+//claimer_user_data of other signer
+//claimer_user_data of other mint
+//claimer_user_data of other signer & mint
+
 //ClaimPayOut
 //SUCCESS (all should be done with & without additional data account):
 //Claim data.kind=HTLC with secret
@@ -216,7 +216,6 @@
 //Claim data.kind=CHAIN with valid tx
 //Claim data.kind=CHAIN with valid big tx (50kB+)
 //FAIL:
-//Signer not signed
 //Wrong escrow_state (data.pay_out = false)
 //#IF (data.pay_in = true)
 //  Initializer not offerer
@@ -224,11 +223,6 @@
 //  Initializer not claimer
 //#END
 //Wrong ix_sysvar
-//Uninitialized claimer_ata
-//claimer_ata for other mint
-//Wrong claimer_ata (not the one specified in escrow_state)
-//Bad mint vault
-//Wrong vault authority
 //#IF (accounts.data.is_some() = true)
 //  Invalid data account (belongs to different key)
 //#END
@@ -253,5 +247,10 @@
 //  Wrong btcrelay confirmations
 //  Wrong btcrelay txhash verified
 //#END
+
+//Uninitialized claimer_ata
+//claimer_ata for other mint
+//Bad mint vault
+//Wrong vault authority
 
 require("./instructions/withdraw");

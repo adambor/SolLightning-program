@@ -8,8 +8,10 @@ import { Account, TOKEN_PROGRAM_ID, getAccount } from "@solana/spl-token";
 import { assert } from "chai";
 import { getInitializedUserData } from "../utils/userData";
 import { randomBytes } from "crypto";
-import { InitializeIXData, SwapData, SwapType, SwapTypeEnum, getInitializeDefaultDataNotPayIn, getInitializeDefaultDataPayIn, initializeDefaultAmount, initializeExecuteNotPayIn, initializeExecutePayIn } from "../utils/escrowState";
+import { InitializeIXData, InitializeIXDataNotPayIn, InitializeIXDataPayIn, SwapData, SwapType, SwapTypeEnum, getInitializeDefaultDataNotPayIn, getInitializeDefaultDataPayIn, initializeDefaultAmount, initializeExecuteNotPayIn, initializeExecutePayIn } from "../utils/escrowState";
 import { ParalelizedTest } from "../utils";
+import { CombinedProgramErrorType } from "../utils/program";
+import { getInitializedVault } from "../utils/vault";
 
 const program = workspace.SwapProgram as Program<SwapProgram>;
 const provider: AnchorProvider = AnchorProvider.local();
@@ -24,7 +26,7 @@ const parallelTest = new ParalelizedTest();
 
 function runCommonTest(
     prefix: string,
-    execute: (data: InitializeIXData) => Promise<{result:SignatureResult, signature: string}>,
+    execute: (data: InitializeIXData) => Promise<{result:SignatureResult, signature: string, error: CombinedProgramErrorType}>,
     getDefaultInitializeData: (
         payOut: boolean,
         noInitClaimer?: boolean,
@@ -45,9 +47,18 @@ function runCommonTest(
         
         data.params.swapData.payIn = !data.params.swapData.payIn;
 
-        const {result, signature} = await execute(data);
+        if(data.params.swapData.payIn) {
+            (data as InitializeIXDataPayIn).accounts.offererAta = await data.mintData.mintTo(data.accounts.offerer.publicKey, initializeDefaultAmount);
+            (data as InitializeIXDataPayIn).accounts.vault = SwapVault(data.mintData.mint);
+            (data as InitializeIXDataPayIn).accounts.vaultAuthority = SwapVaultAuthority;
+            (data as InitializeIXDataPayIn).accounts.tokenProgram = TOKEN_PROGRAM_ID;
+        } else {
+            (data as InitializeIXDataNotPayIn).accounts.offererUserData = await getInitializedUserData(data.accounts.offerer, data.mintData, initializeDefaultAmount);
+        }
 
-        assert(result.err!=null, "Transaction should've failed!");
+        const {result, signature, error} = await execute(data);
+
+        assert(error==="InvalidSwapDataPayIn", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"Expired authorization", async () => {
@@ -55,9 +66,9 @@ function runCommonTest(
         
         data.params.authExpiry = new BN(Math.floor(Date.now()/1000)-3600);
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="AuthExpired", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"Wrong escrow state", async () => {
@@ -65,9 +76,9 @@ function runCommonTest(
 
         data.accounts.escrowState = SwapEscrowState(randomBytes(32));
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"Already initialized escrow state", async () => {
@@ -79,49 +90,52 @@ function runCommonTest(
 
         const data2 = await getDefaultInitializeData(true, undefined, undefined, undefined, undefined, Buffer.from(data.params.swapData.hash));
         
-        const {result: result2, signature: signature2} = await execute(data2);
+        const {result: result2, signature: signature2, error} = await execute(data2);
 
-        assert(result2.err!=null, "Transaction should've failed!");
+        // const txData = await provider.connection.getTransaction(signature2, { commitment: "confirmed" });
+        // console.log("Transaction logs: ", txData.meta.logMessages);
+
+        assert(error==="AccountAlreadyInitialized", "Invalid transaction error ("+error+"): "+JSON.stringify(result2.err));
     });
     
     parallelTest.it(prefix+"Too many confirmations", async () => {
         const data = await getDefaultInitializeData(true, undefined, undefined, undefined, undefined, undefined, undefined, 250);
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="TooManyConfirmations", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"Kind===HTLC but nonce provided", async () => {
         const data = await getDefaultInitializeData(true, undefined, undefined, "htlc", undefined, undefined, undefined, undefined, new BN(randomBytes(8)));
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="InvalidSwapDataNonce", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"Kind===Chain but nonce provided", async () => {
         const data = await getDefaultInitializeData(true, undefined, undefined, "chain", undefined, undefined, undefined, undefined, new BN(randomBytes(8)));
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="InvalidSwapDataNonce", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"Kind===chainTxhash but nonce provided", async () => {
         const data = await getDefaultInitializeData(true, undefined, undefined, "chainTxhash", undefined, undefined, undefined, undefined, new BN(randomBytes(8)));
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="InvalidSwapDataNonce", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"payOut=true: Uninitialized claimerAta", async () => {
         const data = await getDefaultInitializeData(true, true);
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="AccountNotInitialized", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"payOut=true: claimerAta of other mint", async () => {
@@ -130,17 +144,17 @@ function runCommonTest(
         const otherMint = await getNewMint();
         data.accounts.claimerAta = await otherMint.mintTo(data.accounts.claimer.publicKey, escrowAmount);
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintTokenMint", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"payOut=false: Uninitialized claimerUserData", async () => {
         const data = await getDefaultInitializeData(false, true);
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="AccountNotInitialized", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"payOut=false: claimerUserData of other signer", async () => {
@@ -150,9 +164,9 @@ function runCommonTest(
         await provider.connection.confirmTransaction(await provider.connection.requestAirdrop(otherSigner.publicKey, 1000000000));
         data.accounts.claimerUserData = await getInitializedUserData(otherSigner, data.mintData, escrowAmount);
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"payOut=false: claimerUserData of other mint", async () => {
@@ -161,9 +175,9 @@ function runCommonTest(
         const otherMint = await getNewMint();
         data.accounts.claimerUserData = await getInitializedUserData(data.accounts.claimer, otherMint, escrowAmount);
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"payOut=false: claimerUserData of other signer & mint", async () => {
@@ -174,9 +188,9 @@ function runCommonTest(
         await provider.connection.confirmTransaction(await provider.connection.requestAirdrop(otherSigner.publicKey, 1000000000));
         data.accounts.claimerUserData = await getInitializedUserData(otherSigner, otherMint, escrowAmount);
 
-        const {result, signature} = await execute(data);
+        const {result, signature, error} = await execute(data);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 }
 
@@ -300,9 +314,9 @@ describe("swap-program: Initialize", () => {
         parallelTest.it(prefix+"Uninitialized offererUserData", async () => {
             const data = await getInitializeDefaultDataNotPayIn(true, null, true);
 
-            const {result, signature} = await initializeExecuteNotPayIn(data);
+            const {result, signature, error} = await initializeExecuteNotPayIn(data);
 
-            assert(result.err!=null, "Transaction should've failed!");
+            assert(error==="AccountNotInitialized", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"offererUserData with not enough funds", async () => {
@@ -310,9 +324,9 @@ describe("swap-program: Initialize", () => {
 
             data.params.swapData.amount = tooMuchAmount;
 
-            const {result, signature} = await initializeExecuteNotPayIn(data);
+            const {result, signature, error} = await initializeExecuteNotPayIn(data);
 
-            assert(result.err!=null, "Transaction should've failed!");
+            assert(error==="ConstraintRaw", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"offererUserData of other signer", async () => {
@@ -324,9 +338,9 @@ describe("swap-program: Initialize", () => {
 
             data.accounts.offererUserData = otherUserData;
 
-            const {result, signature} = await initializeExecuteNotPayIn(data);
+            const {result, signature, error} = await initializeExecuteNotPayIn(data);
 
-            assert(result.err!=null, "Transaction should've failed!");
+            assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"offererUserData of other mint", async () => {
@@ -337,9 +351,9 @@ describe("swap-program: Initialize", () => {
 
             data.accounts.offererUserData = otherUserData;
 
-            const {result, signature} = await initializeExecuteNotPayIn(data);
+            const {result, signature, error} = await initializeExecuteNotPayIn(data);
 
-            assert(result.err!=null, "Transaction should've failed!");
+            assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"offererUserData of other signer & mint", async () => {
@@ -352,9 +366,9 @@ describe("swap-program: Initialize", () => {
 
             data.accounts.offererUserData = otherUserData;
 
-            const {result, signature} = await initializeExecuteNotPayIn(data);
+            const {result, signature, error} = await initializeExecuteNotPayIn(data);
 
-            assert(result.err!=null, "Transaction should've failed!");
+            assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
     }
 
@@ -484,9 +498,9 @@ describe("swap-program: Initialize", () => {
         parallelTest.it(prefix+"Uninitialized offererAta", async () => {
             const data = await getInitializeDefaultDataPayIn(true, null, true);
 
-            const {result, signature} = await initializeExecutePayIn(data);
+            const {result, signature, error} = await initializeExecutePayIn(data);
 
-            assert(result.err!=null, "Transaction should've failed!");
+            assert(error==="AccountNotInitialized", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"offererAta of other mint", async () => {
@@ -495,9 +509,9 @@ describe("swap-program: Initialize", () => {
             const otherMint = await getNewMint();
             data.accounts.offererAta = await otherMint.mintTo(data.accounts.offerer.publicKey, escrowAmount);
 
-            const {result, signature} = await initializeExecutePayIn(data);
+            const {result, signature, error} = await initializeExecutePayIn(data);
 
-            assert(result.err!=null, "Transaction should've failed!");
+            assert(error==="ConstraintTokenMint", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"offererAta with not enough funds", async () => {
@@ -505,20 +519,20 @@ describe("swap-program: Initialize", () => {
 
             data.params.swapData.amount = tooMuchAmount;
 
-            const {result, signature} = await initializeExecutePayIn(data);
+            const {result, signature, error} = await initializeExecutePayIn(data);
 
-            assert(result.err!=null, "Transaction should've failed!");
+            assert(error==="ConstraintRaw", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"Bad mint vault", async () => {
             const data = await getInitializeDefaultDataPayIn(true);
 
             const otherMint = await getNewMint();
-            data.accounts.vault = SwapVault(otherMint.mint);
+            data.accounts.vault = await getInitializedVault(otherMint, initializeDefaultAmount);
 
-            const {result, signature} = await initializeExecutePayIn(data);
+            const {result, signature, error} = await initializeExecutePayIn(data);
 
-            assert(result.err!=null, "Transaction should've failed!");
+            assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
         
         parallelTest.it(prefix+"Wrong vault authority", async () => {
@@ -526,9 +540,9 @@ describe("swap-program: Initialize", () => {
 
             data.accounts.vaultAuthority = RandomPDA();
 
-            const {result, signature} = await initializeExecutePayIn(data);
+            const {result, signature, error} = await initializeExecutePayIn(data);
 
-            assert(result.err!=null, "Transaction should've failed!");
+            assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
     }
 

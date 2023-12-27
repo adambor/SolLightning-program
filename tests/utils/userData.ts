@@ -37,14 +37,15 @@ export async function getInitializedUserData(signer: Keypair, mintData: TokenMin
     const signature = await provider.connection.sendTransaction(tx, [signer], {
         skipPreflight: true
     });
-    const result = await provider.connection.confirmTransaction(signature);
+    const result = await provider.connection.confirmTransaction(signature, "confirmed");
 
     assert(result.value.err==null, "getInitializedUserData(): Transaction error: "+JSON.stringify(result.value.err, null, 4));
 
     if(closeAta) {
-        const signature = await closeAccount(provider.connection, signer, signerAta, signer.publicKey, signer, undefined, {skipPreflight: true});
-        const result = await provider.connection.confirmTransaction(signature);
-        assert(result.value.err==null, "getInitializedUserData(): Close ATA transaction error: "+JSON.stringify(result.value.err, null, 4));
+        // const signature = await closeAccount(provider.connection, signer, signerAta, signer.publicKey, signer, undefined, {skipPreflight: true});
+        // const result = await provider.connection.confirmTransaction(signature);
+        // assert(result.value.err==null, "getInitializedUserData(): Close ATA transaction error: "+JSON.stringify(result.value.err, null, 4));
+        await mintData.closeAta(signer);
     }
 
     return userData;

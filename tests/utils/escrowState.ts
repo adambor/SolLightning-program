@@ -8,6 +8,7 @@ import { Account, TOKEN_PROGRAM_ID, getAccount } from "@solana/spl-token";
 import { assert } from "chai";
 import { getInitializedUserData } from "../utils/userData";
 import { randomBytes } from "crypto";
+import { CombinedProgramErrorType, parseSwapProgramError } from "./program";
 
 const program = workspace.SwapProgram as Program<SwapProgram>;
 const provider: AnchorProvider = AnchorProvider.local();
@@ -269,7 +270,7 @@ export async function getInitializeDefaultDataPayIn(
     };
 }
 
-export async function initializeExecuteNotPayIn(data: InitializeIXDataNotPayIn): Promise<{result:SignatureResult, signature: string}> {
+export async function initializeExecuteNotPayIn(data: InitializeIXDataNotPayIn): Promise<{result:SignatureResult, signature: string, error: CombinedProgramErrorType}> {
     
     const tx = await program.methods.offererInitialize(
         data.params.swapData as any,
@@ -293,16 +294,17 @@ export async function initializeExecuteNotPayIn(data: InitializeIXDataNotPayIn):
     const signature = await provider.connection.sendTransaction(tx, [data.accounts.claimer, data.accounts.offerer], {
         skipPreflight: true
     });
-    const result = await provider.connection.confirmTransaction(signature);
+    const result = await provider.connection.confirmTransaction(signature, "confirmed");
 
     return {
         result: result.value,
-        signature
+        signature,
+        error: parseSwapProgramError(0, result.value.err)
     };
 
 }
 
-export async function initializeExecutePayIn(data: InitializeIXDataPayIn): Promise<{result:SignatureResult, signature: string}> {
+export async function initializeExecutePayIn(data: InitializeIXDataPayIn): Promise<{result:SignatureResult, signature: string, error: CombinedProgramErrorType}> {
     
     const tx = await program.methods.offererInitializePayIn(
         data.params.swapData as any,
@@ -327,11 +329,12 @@ export async function initializeExecutePayIn(data: InitializeIXDataPayIn): Promi
     const signature = await provider.connection.sendTransaction(tx, [data.accounts.claimer, data.accounts.offerer], {
         skipPreflight: true
     });
-    const result = await provider.connection.confirmTransaction(signature);
+    const result = await provider.connection.confirmTransaction(signature, "confirmed");
 
     return {
         result: result.value,
-        signature
+        signature,
+        error: parseSwapProgramError(0, result.value.err)
     };
 
 }

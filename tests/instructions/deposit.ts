@@ -9,6 +9,7 @@ import { assert } from "chai";
 import { getInitializedUserData } from "../utils/userData";
 import { getInitializedVault } from "../utils/vault";
 import { ParalelizedTest } from "../utils";
+import { CombinedProgramErrorType, parseSwapProgramError } from "../utils/program";
 
 const program = workspace.SwapProgram as Program<SwapProgram>;
 const provider: AnchorProvider = AnchorProvider.local();
@@ -56,7 +57,7 @@ async function getDefaultAccounts(noSignerAta?: boolean): Promise<IXAccounts> {
     };
 }
 
-async function execute(accounts: IXAccounts): Promise<SignatureResult> {
+async function execute(accounts: IXAccounts): Promise<{result: SignatureResult, error: CombinedProgramErrorType}> {
     
     const tx = await program.methods.deposit(depositAmount).accounts({
         signer: accounts.signer.publicKey,
@@ -76,7 +77,10 @@ async function execute(accounts: IXAccounts): Promise<SignatureResult> {
     });
     const result = await provider.connection.confirmTransaction(signature);
 
-    return result.value;
+    return {
+        result: result.value,
+        error: parseSwapProgramError(0, result.value.err)
+    };
 
 }
 
@@ -90,7 +94,7 @@ describe("swap-program: Deposit", () => {
         const initialVaultBalance = await getAccount(provider.connection, accs.vault).catch(e => {}).then(e => e==null ? new BN(0) : new BN((e as Account).amount.toString()));
         const initialUserDataBalance = await program.account.userAccount.fetchNullable(accs.userData).then(e => e==null ? new BN(0) : e.amount);
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
         const postSignerAtaBalance = await getAccount(provider.connection, accs.signerAta).then(e => new BN(e.amount.toString()));
         const postVaultBalance = await getAccount(provider.connection, accs.vault).catch(e => {}).then(e => e==null ? new BN(0) : new BN((e as Account).amount.toString()));
@@ -111,7 +115,7 @@ describe("swap-program: Deposit", () => {
         const initialVaultBalance = await getAccount(provider.connection, accs.vault).catch(e => {}).then(e => e==null ? new BN(0) : new BN((e as Account).amount.toString()));
         const initialUserDataBalance = await program.account.userAccount.fetchNullable(accs.userData).then(e => e==null ? new BN(0) : e.amount);
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
         const postSignerAtaBalance = await getAccount(provider.connection, accs.signerAta).then(e => new BN(e.amount.toString()));
         const postVaultBalance = await getAccount(provider.connection, accs.vault).catch(e => {}).then(e => e==null ? new BN(0) : new BN((e as Account).amount.toString()));
@@ -133,7 +137,7 @@ describe("swap-program: Deposit", () => {
         const initialVaultBalance = await getAccount(provider.connection, accs.vault).catch(e => {}).then(e => e==null ? new BN(0) : new BN((e as Account).amount.toString()));
         const initialUserDataBalance = await program.account.userAccount.fetchNullable(accs.userData).then(e => e==null ? new BN(0) : e.amount);
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
         const postSignerAtaBalance = await getAccount(provider.connection, accs.signerAta).then(e => new BN(e.amount.toString()));
         const postVaultBalance = await getAccount(provider.connection, accs.vault).catch(e => {}).then(e => e==null ? new BN(0) : new BN((e as Account).amount.toString()));
@@ -150,9 +154,9 @@ describe("swap-program: Deposit", () => {
         
         accs.signerAta = await accs.mintData.getATA(accs.signer.publicKey);
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="AccountNotInitialized", "Transaction should've failed!");
     });
 
     parallelTest.it("ATA for other mint", async () => {
@@ -161,9 +165,9 @@ describe("swap-program: Deposit", () => {
         const otherMintData = await getNewMint();
         accs.signerAta = await otherMintData.mintTo(accs.signer.publicKey, depositAmount);
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintTokenMint", "Transaction should've failed!");
     });
 
     parallelTest.it("ATA with not enough funds", async () => {
@@ -171,54 +175,56 @@ describe("swap-program: Deposit", () => {
         
         accs.signerAta = await accs.mintData.mintTo(accs.signer.publicKey, notEnoughAmount);
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintRaw", "Transaction should've failed!");
     });
 
     parallelTest.it("User account of other user", async () => {
         const accs = await getDefaultAccounts();
 
         const otherSigner = Keypair.generate();
-        accs.userData = SwapUserVault(otherSigner.publicKey, accs.mintData.mint);
+        await provider.connection.confirmTransaction(await provider.connection.requestAirdrop(otherSigner.publicKey, 1000000000));
+        accs.userData = await getInitializedUserData(otherSigner, accs.mintData, depositAmount);
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintSeeds", "Transaction should've failed!");
     });
 
     parallelTest.it("User account of other mint", async () => {
         const accs = await getDefaultAccounts();
 
         const otherMintData = await getNewMint();
-        accs.userData = SwapUserVault(accs.signer.publicKey, otherMintData.mint);
+        accs.userData = await getInitializedUserData(accs.signer, otherMintData, depositAmount);
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintSeeds", "Transaction should've failed!");
     });
 
     parallelTest.it("User account of other signer & mint", async () => {
         const accs = await getDefaultAccounts();
 
         const otherSigner = Keypair.generate();
+        await provider.connection.confirmTransaction(await provider.connection.requestAirdrop(otherSigner.publicKey, 1000000000));
         const otherMintData = await getNewMint();
-        accs.userData = SwapUserVault(otherSigner.publicKey, otherMintData.mint);
+        accs.userData = await getInitializedUserData(otherSigner, otherMintData, depositAmount);
         
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintSeeds", "Transaction should've failed!");
     });
 
     parallelTest.it("Wrong mint vault (different mint)", async () => {
         const accs = await getDefaultAccounts();
 
         const otherMintData = await getNewMint();
-        accs.vault = SwapVault(otherMintData.mint);
+        accs.vault = await getInitializedVault(otherMintData, depositAmount);
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintSeeds", "Transaction should've failed!");
     });
 
     parallelTest.it("Wrong mint vault authority - random", async () => {
@@ -226,9 +232,9 @@ describe("swap-program: Deposit", () => {
 
         accs.vaultAuthority = RandomPDA();
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintSeeds", "Transaction should've failed!");
     });
 
     parallelTest.it("Wrong mint", async () => {
@@ -237,9 +243,9 @@ describe("swap-program: Deposit", () => {
         const otherMintData = await getNewMint();
         accs.mint = otherMintData.mint;
 
-        const result = await execute(accs);
+        const {result, error} = await execute(accs);
 
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintSeeds", "Transaction should've failed!");
     });
 
     parallelTest.execute();

@@ -208,7 +208,7 @@ export const btcRelayIdl = {
         },
         {
           "name": "mainState",
-          "isMut": true,
+          "isMut": false,
           "isSigner": false
         }
       ],
@@ -259,7 +259,7 @@ export const btcRelayIdl = {
         },
         {
           "name": "mainState",
-          "isMut": true,
+          "isMut": false,
           "isSigner": false
         }
       ],
@@ -653,6 +653,16 @@ export const btcRelayIdl = {
       "code": 6012,
       "name": "InvalidBlockheight",
       "msg": "Blockheight doesn't match"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidForkId",
+      "msg": "Fork has invalid ID"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidRemainingAccounts",
+      "msg": "Didn't pass enough remaining accounts!"
     }
   ],
   "metadata": {

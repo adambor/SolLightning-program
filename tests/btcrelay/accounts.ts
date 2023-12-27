@@ -23,3 +23,20 @@ export const BtcRelayMainState: PublicKey = PublicKey.findProgramAddressSync(
     [Buffer.from(MAIN_SEED)],
     btcRelayProgram.programId
 )[0];
+
+export type BitcoinHeader = {
+    version: number,
+    reversedPrevBlockhash: Buffer,
+    merkleRoot: Buffer,
+    timestamp: number,
+    nbits: number,
+    nonce: number
+}
+
+export type CommittedHeader = {
+    chainWork: Buffer,
+    header: BitcoinHeader,
+    lastDiffAdjustment: number,
+    blockheight: number,
+    prevBlocktimestamps: number[]
+};

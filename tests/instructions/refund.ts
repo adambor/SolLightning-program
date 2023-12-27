@@ -12,6 +12,7 @@ import { randomBytes, createHash } from "crypto";
 import { EscrowStateType, SwapData, SwapType, SwapTypeEnum, getInitializeDefaultDataNotPayIn, getInitializeDefaultDataPayIn, getInitializedEscrowState as _getInitializedEscrowState, initializeDefaultAmount, initializeExecuteNotPayIn, initializeExecutePayIn } from "../utils/escrowState";
 import { BtcRelayMainState, btcRelayProgram } from "../btcrelay/accounts";
 import { ParalelizedTest } from "../utils";
+import { CombinedProgramErrorType, parseSwapProgramError } from "../utils/program";
 
 const BLOCKHEIGHT_EXPIRY_THRESHOLD = new BN(1000000000);
 const MOCKED_BLOCKHEIGHT = 845414; //Mocked blockheight in BTC relay program
@@ -170,7 +171,7 @@ export async function getRefundDefaultDataNotPayIn(
     };
 }
 
-export async function refundExecutePayIn(data: RefundIXDataPayIn): Promise<{result: SignatureResult, signature: string}> {
+export async function refundExecutePayIn(data: RefundIXDataPayIn): Promise<{result: SignatureResult, signature: string, error: CombinedProgramErrorType}> {
     
     const ix = await program.methods.offererRefundPayIn(
         data.params.authExpiry
@@ -214,12 +215,13 @@ export async function refundExecutePayIn(data: RefundIXDataPayIn): Promise<{resu
 
     return {
         result: result.value,
-        signature
+        signature,
+        error: parseSwapProgramError(tx.instructions.length-1, result.value.err)
     };
 
 }
 
-export async function refundExecuteNotPayIn(data: RefundIXDataNotPayIn): Promise<{result: SignatureResult, signature: string}> {
+export async function refundExecuteNotPayIn(data: RefundIXDataNotPayIn): Promise<{result: SignatureResult, signature: string, error: CombinedProgramErrorType}> {
 
     const ix = await program.methods.offererRefund(
         data.params.authExpiry
@@ -260,7 +262,8 @@ export async function refundExecuteNotPayIn(data: RefundIXDataNotPayIn): Promise
 
     return {
         result: result.value,
-        signature
+        signature,
+        error: parseSwapProgramError(tx.instructions.length-1, result.value.err)
     };
 
 }
@@ -295,7 +298,7 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             getRefundDefaultDataPayIn(escrowState, refundType==="signed" ? new BN(Math.floor(Date.now()/1000) + 3600) : undefined) :
             getRefundDefaultDataNotPayIn(escrowState, refundType==="signed" ? new BN(Math.floor(Date.now()/1000) + 3600) : undefined);
     }
-    const refundExecute: (data: RefundIXData) => Promise<{result: SignatureResult, signature: string}> = payIn ? refundExecutePayIn : refundExecuteNotPayIn;
+    const refundExecute: (data: RefundIXData) => Promise<{result: SignatureResult, signature: string, error: CombinedProgramErrorType}> = payIn ? refundExecutePayIn : refundExecuteNotPayIn;
 
     parallelTest.it(prefix+"Success refund", async () => {
         const escrowStateData = await getInitializedEscrowState();
@@ -410,12 +413,12 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
         if(payIn) {
             (data as RefundIXDataPayIn).accounts.offererAta = await escrowStateData.mint.mintTo(otherOfferer.publicKey, initializeDefaultAmount);
         } else {
-            await getInitializedUserData(otherOfferer, escrowStateData.mint, initializeDefaultAmount);
+            (data as RefundIXDataNotPayIn).accounts.offererUserData = await getInitializedUserData(otherOfferer, escrowStateData.mint, initializeDefaultAmount);
         }
 
-        const {result, signature} = await refundExecute(data);
+        const {result, signature, error} = await refundExecute(data);
         
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintRaw", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"Wrong claimer", async () => {
@@ -435,9 +438,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             data.authSignature = signRefund(otherClaimer, escrowStateData.data, new BN(Math.floor(Date.now()/1000) + 3600));
         }
 
-        const {result, signature} = await refundExecute(data);
+        const {result, signature, error} = await refundExecute(data);
         
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintRaw", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"Wrong offerer & claimer", async () => {
@@ -452,7 +455,7 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
         if(payIn) {
             (data as RefundIXDataPayIn).accounts.offererAta = await escrowStateData.mint.mintTo(otherOfferer.publicKey, initializeDefaultAmount);
         } else {
-            await getInitializedUserData(otherOfferer, escrowStateData.mint, initializeDefaultAmount);
+            (data as RefundIXDataNotPayIn).accounts.offererUserData = await getInitializedUserData(otherOfferer, escrowStateData.mint, initializeDefaultAmount);
         }
         
         const otherClaimer = Keypair.generate();
@@ -467,9 +470,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             data.authSignature = signRefund(otherClaimer, escrowStateData.data, data.params.authExpiry);
         }
 
-        const {result, signature} = await refundExecute(data);
+        const {result, signature, error} = await refundExecute(data);
         
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintRaw", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     parallelTest.it(prefix+"Wrong payIn", async () => {
@@ -477,9 +480,15 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
 
         const data = await getRefundDefaultData(escrowStateData);
 
-        const {result, signature} = await refundExecute(data);
+        if(payIn) {
+            (data as RefundIXDataPayIn).accounts.offererAta = await escrowStateData.mint.mintTo(escrowStateData.offerer.publicKey, initializeDefaultAmount);
+        } else {
+            (data as RefundIXDataNotPayIn).accounts.offererUserData = await getInitializedUserData(escrowStateData.offerer, escrowStateData.mint, initializeDefaultAmount);
+        }
+
+        const {result, signature, error} = await refundExecute(data);
         
-        assert(result.err!=null, "Transaction should've failed!");
+        assert(error==="ConstraintRaw", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
     });
 
     if(payOut) {
@@ -494,9 +503,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
 
             data.accounts.claimerUserData = await getInitializedUserData(otherClaimer, escrowStateData.mint, initializeDefaultAmount);
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"ClaimerUserAccount of other mint", async () => {
@@ -507,9 +516,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             const otherMint = await getNewMint();
             data.accounts.claimerUserData = await getInitializedUserData(escrowStateData.claimer, otherMint, initializeDefaultAmount);
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"ClaimerUserAccount of other signer & mint", async () => {
@@ -522,9 +531,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             const otherMint = await getNewMint();
             data.accounts.claimerUserData = await getInitializedUserData(otherClaimer, otherMint, initializeDefaultAmount);
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="ConstraintSeeds", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
     }
@@ -538,9 +547,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
 
             data.accounts.ixSysvar = Keypair.generate().publicKey;
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="ConstraintAddress", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"Expired auth", async () => {
@@ -551,9 +560,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             data.params.authExpiry = new BN(Math.floor(Date.now()/1000)-3600)
             data.authSignature = signRefund(data.accounts.claimer, escrowStateData.data, data.params.authExpiry);
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="AuthExpired", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"No prior signature verify instruction", async () => {
@@ -563,9 +572,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
 
             data.authSignature = null;
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="SignatureVerificationFailedInvalidProgram", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"Wrong data in signature verify instruction", async () => {
@@ -577,9 +586,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             escrowStateData.data.hash = [...randomBytes(32)];
             data.authSignature = signRefund(data.accounts.claimer, escrowStateData.data, data.params.authExpiry);
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="SignatureVerificationFailedInvalidData", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"Wrong signer in signature verify instruction", async () => {
@@ -590,9 +599,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             const otherClaimer = Keypair.generate();
             data.authSignature = signRefund(otherClaimer, escrowStateData.data, data.params.authExpiry);
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="SignatureVerificationFailedInvalidData", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
         
     }
@@ -605,8 +614,8 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             const data = await getRefundDefaultData(escrowStateData);
 
             const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+        
+            assert((result.err as any)?.InstructionError[0]===0, "Invalid transaction error: "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"No prior blockheight verify instruction", async () => {
@@ -616,9 +625,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
 
             data.blockheightLock = null;
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="InvalidBlockheightVerifyProgramId", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"Invalid blockheight verify instruction (blockheight)", async () => {
@@ -628,9 +637,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
 
             data.blockheightLock.blockheight = new BN(MOCKED_BLOCKHEIGHT-4784);
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="InvalidBlockheightVerifyHeight", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
         parallelTest.it(prefix+"Invalid blockheight verify instruction (operator)", async () => {
@@ -638,11 +647,11 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             
             const data = await getRefundDefaultData(escrowStateData);
 
-            data.blockheightLock.operator = 4;
+            data.blockheightLock.operator = 3;
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="InvalidBlockheightVerifyOperation", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
     }
@@ -654,9 +663,9 @@ function runTestsWith(payIn: boolean, payOut: boolean, refundType: "signed" | "t
             
             const data = await getRefundDefaultData(escrowStateData);
 
-            const {result, signature} = await refundExecute(data);
-            
-            assert(result.err!=null, "Transaction should've failed!");
+            const {result, signature, error} = await refundExecute(data);
+        
+            assert(error==="NotExpiredYet", "Invalid transaction error ("+error+"): "+JSON.stringify(result.err));
         });
 
     }

@@ -6,6 +6,7 @@
     "dependencies": {
         "@coral-xyz/anchor": "^0.29.0",
         "@solana/spl-token": "^0.3.9",
+        "bitcoinjs-lib": "^6.1.5",
         "tweetnacl": "^1.0.3"
     },
     "devDependencies": {

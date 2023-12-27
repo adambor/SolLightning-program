@@ -20,6 +20,8 @@ export class ParalelizedTest {
 
     async execute() {
 
+        console.log("Running "+this.tests.length+" tests! Maximum "+this.maxParallelTests+" in parallel!");
+
         let currentPromise = Promise.resolve<any>({});
 
         const promises: {
