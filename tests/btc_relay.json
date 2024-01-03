@@ -1,4 +1,4 @@
-export const btcRelayIdl = {
+{
   "version": "0.1.0",
   "name": "btc_relay",
   "instructions": [
