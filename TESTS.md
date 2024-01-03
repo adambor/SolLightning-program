@@ -140,3 +140,6 @@
 ```
 anchor test --skip-local-validator --skip-deploy --skip-build
 ```
+
+
+NOTE: As the number of tests is around 600, they are paralelized in batches of 10 (this can be changed by setting a different default value in ParalelizedTest constructor - tests/utils.ts)
