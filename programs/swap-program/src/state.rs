@@ -34,9 +34,6 @@ impl EscrowState {
 //PDA format for storing user's (LP node's) balance and reputation
 #[account]
 pub struct UserAccount {
-    //@deprecated, was used to prevent replay protection for initialization authorization
-    pub nonce: u64,
-    
     pub amount: u64, //Amount of tokens held by the user
 
     /////////////////////////
@@ -61,5 +58,5 @@ pub struct UserAccount {
 }
 
 impl UserAccount {
-    pub const SPACE: usize = 8 + 8 + 8 + (8*6*SWAP_TYPE_COUNT) + 1;
+    pub const SPACE: usize = 8 + 8 + (8*6*SWAP_TYPE_COUNT) + 1;
 }
