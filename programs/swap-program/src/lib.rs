@@ -214,7 +214,7 @@ pub mod swap_program {
         let user_data = &mut ctx.accounts.claimer_user_data;
         user_data.amount += ctx.accounts.escrow_state.data.amount;
         user_data.success_volume[ctx.accounts.escrow_state.data.kind as usize] = user_data.success_volume[ctx.accounts.escrow_state.data.kind as usize].saturating_add(ctx.accounts.escrow_state.data.amount);
-        user_data.success_count[ctx.accounts.escrow_state.data.kind as usize] += 1;
+        user_data.success_count[ctx.accounts.escrow_state.data.kind as usize] = user_data.success_count[ctx.accounts.escrow_state.data.kind as usize].saturating_add(1);
 
         ixs::claim::pay_claimer_bounty(&ctx.accounts.signer, &ctx.accounts.initializer, &ctx.accounts.escrow_state)?;
 

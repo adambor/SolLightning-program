@@ -34,10 +34,10 @@ pub fn process_refund(auth_expiry: u64, escrow_state: &Account<EscrowState>, ix_
 
         if is_cooperative {
             user_data_claimer.coop_close_volume[escrow_state.data.kind as usize] = user_data_claimer.coop_close_volume[escrow_state.data.kind as usize].saturating_add(escrow_state.data.amount);
-            user_data_claimer.coop_close_count[escrow_state.data.kind as usize] += 1;
+            user_data_claimer.coop_close_count[escrow_state.data.kind as usize] = user_data_claimer.coop_close_count[escrow_state.data.kind as usize].saturating_add(1);
         } else {
             user_data_claimer.fail_volume[escrow_state.data.kind as usize] = user_data_claimer.fail_volume[escrow_state.data.kind as usize].saturating_add(escrow_state.data.amount);
-            user_data_claimer.fail_count[escrow_state.data.kind as usize] += 1;
+            user_data_claimer.fail_count[escrow_state.data.kind as usize] = user_data_claimer.fail_count[escrow_state.data.kind as usize].saturating_add(1);
         }
     }
 
