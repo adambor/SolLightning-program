@@ -20,7 +20,6 @@ fn now_ts() -> Result<u64> {
 #[allow(clippy::too_many_arguments)]
 pub fn process_initialize(
     escrow_state: &mut Account<EscrowState>,
-    bump: u8,
     offerer: &AccountInfo,
     claimer: &AccountInfo,
     claimer_ata: &Option<Account<TokenAccount>>,
@@ -58,8 +57,6 @@ pub fn process_initialize(
         escrow_state.claimer_ata = *claimer_ata.to_account_info().key;
     }
     escrow_state.mint = *mint.to_account_info().key;
-
-    escrow_state.bump = bump;
 
     emit!(InitializeEvent {
         hash: swap_data.hash,

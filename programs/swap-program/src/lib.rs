@@ -96,7 +96,6 @@ pub mod swap_program {
 
         ixs::initialize::process_initialize(
             &mut ctx.accounts.escrow_state,
-            ctx.bumps.escrow_state,
             &ctx.accounts.offerer.to_account_info(),
             &ctx.accounts.claimer,
             &ctx.accounts.claimer_ata,
@@ -138,7 +137,6 @@ pub mod swap_program {
 
         ixs::initialize::process_initialize(
             &mut ctx.accounts.escrow_state,
-            ctx.bumps.escrow_state,
             &ctx.accounts.offerer.to_account_info(),
             &ctx.accounts.claimer,
             &ctx.accounts.claimer_ata,

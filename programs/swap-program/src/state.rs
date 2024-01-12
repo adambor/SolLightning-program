@@ -24,9 +24,7 @@ pub struct EscrowState {
     //Security deposit, paid out to offerer in case swap expires and needs to be refunded.
     //Used to cover transaction fee and compensate for time value of money locked up in the contract.
     //Alway paid as native Solana, in Lamports
-    pub security_deposit: u64,
-
-    pub bump: u8
+    pub security_deposit: u64
 }
 
 impl EscrowState {
