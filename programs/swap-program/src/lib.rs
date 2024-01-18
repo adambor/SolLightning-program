@@ -32,13 +32,13 @@ pub fn now_ts() -> Result<u64> {
     Ok(clock::Clock::get().unwrap().unix_timestamp.try_into().unwrap())
 }
 
-static AUTHORITY_SEED: &[u8] = b"authority";
-static USER_DATA_SEED: &[u8] = b"uservault";
-static BLOCKHEIGHT_EXPIRY_THRESHOLD: u64 = 1000000000; //If expiry is < BLOCKHEIGHT_EXPIRY_THRESHOLD it is considered as expressed in blockheight instead of timestamp
+const AUTHORITY_SEED: &[u8] = b"authority";
+const USER_DATA_SEED: &[u8] = b"uservault";
+const BLOCKHEIGHT_EXPIRY_THRESHOLD: u64 = 1000000000; //If expiry is < BLOCKHEIGHT_EXPIRY_THRESHOLD it is considered as expressed in blockheight instead of timestamp
 
-static BTCRELAY_PRUNING_FACTOR: u16 = 250;
-static BTCRELAY_SAFETY_BUFFER: u16 = 50;
-static MAX_CONFIRMATIONS: u16 = BTCRELAY_PRUNING_FACTOR - BTCRELAY_SAFETY_BUFFER;
+const BTCRELAY_PRUNING_FACTOR: u16 = 250;
+const BTCRELAY_SAFETY_BUFFER: u16 = 50;
+const MAX_CONFIRMATIONS: u16 = BTCRELAY_PRUNING_FACTOR - BTCRELAY_SAFETY_BUFFER;
 
 #[program]
 pub mod swap_program {
