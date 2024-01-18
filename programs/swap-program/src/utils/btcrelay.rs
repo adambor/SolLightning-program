@@ -5,7 +5,7 @@ use anchor_lang::{
 use std::str::FromStr;
 use crate::SwapErrorCode;
 
-static BTC_RELAY_ID_BASE58: &str = "De2dsY5K3DXBDNzKUjE6KguVP5JUhveKNpMVRmRkazff";
+static BTC_RELAY_ID_BASE58: &str = "3KHSHFpEK6bsjg3bqcxQ9qssJYtRCMi2S9TYVe4q6CQc";
 static TX_VERIFY_IX_PREFIX: [u8; 8] = [
     0x9d,
     0x7e,

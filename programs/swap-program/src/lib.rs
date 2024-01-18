@@ -26,7 +26,7 @@ mod structs;
 mod utils;
 mod ixs;
 
-declare_id!("8vowxbBrrfDU6Dz1bBCL4W9K5pTwsBLVAd8kJPsgLiLR");
+declare_id!("4hfUykhqmD7ZRvNh1HuzVKEY7ToENixtdUKZspNDCrEM");
 
 pub fn now_ts() -> Result<u64> {
     Ok(clock::Clock::get().unwrap().unix_timestamp.try_into().unwrap())

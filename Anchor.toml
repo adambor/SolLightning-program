@@ -1,15 +1,17 @@
 [features]
 seeds = false
 [programs.mainnet]
-swap_program = "8vowxbBrrfDU6Dz1bBCL4W9K5pTwsBLVAd8kJPsgLiLR"
+swap_program = "4hfUykhqmD7ZRvNh1HuzVKEY7ToENixtdUKZspNDCrEM"
 [programs.localnet]
-swap_program = "8vowxbBrrfDU6Dz1bBCL4W9K5pTwsBLVAd8kJPsgLiLR"
+swap_program = "4hfUykhqmD7ZRvNh1HuzVKEY7ToENixtdUKZspNDCrEM"
+[programs.devnet]
+swap_program = "4hfUykhqmD7ZRvNh1HuzVKEY7ToENixtdUKZspNDCrEM"
 
 [registry]
 url = "https://anchor.projectserum.com"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/mainnet.key"
 
 [scripts]
