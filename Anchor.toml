@@ -11,7 +11,7 @@ swap_program = "4hfUykhqmD7ZRvNh1HuzVKEY7ToENixtdUKZspNDCrEM"
 url = "https://anchor.projectserum.com"
 
 [provider]
-cluster = "devnet"
+cluster = "mainnet"
 wallet = "~/mainnet.key"
 
 [scripts]
